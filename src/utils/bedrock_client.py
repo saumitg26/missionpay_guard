@@ -10,7 +10,7 @@ from botocore.exceptions import ClientError
 
 logger = logging.getLogger(__name__)
 
-MODEL_ID = "anthropic.claude-3-sonnet-20240229-v1:0"
+MODEL_ID = "anthropic.claude-3-haiku-20240307-v1:0"
 API_VERSION = "bedrock-2023-05-31"
 MAX_RETRIES = 3
 BASE_DELAY_SECONDS = 1.0

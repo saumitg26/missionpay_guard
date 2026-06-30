@@ -31,22 +31,22 @@ export function NewPayment({ onNext }: NewPaymentProps) {
 
   // Step 1: Create the case in DynamoDB
   const handleCreateCase = async () => {
-    if (!vendorName || !amount) {
-      setError("Vendor name and amount are required.");
+    if (!vendorName) {
+      setError("Vendor name is required.");
       return;
     }
     setError("");
     setCreating(true);
     const result = await createCase({
       vendor_name: vendorName,
-      amount: parseFloat(amount.replace(/[^0-9.]/g, "")),
+      amount: parseFloat(amount.replace(/[^0-9.]/g, "")) || 0,
       description: `Payment for ${vendorName}`,
     });
     setCreating(false);
     if (result?.caseId) {
       setCaseId(result.caseId);
     } else {
-      setError("Failed to create case. Check backend connection.");
+      setError("Failed to create case. Check browser console for details.");
     }
   };
 

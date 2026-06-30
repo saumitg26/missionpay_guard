@@ -37,7 +37,7 @@ def build_extraction_prompt(
     # Format form fields for the prompt
     form_fields_text = ""
     if form_fields:
-        form_lines = [f"  - {f['key']}: {f['value']}" for f in form_fields[:50]]
+        form_lines = [f"  - {f['key']}: {f['value']}" for f in form_fields[:80]]
         form_fields_text = "\n".join(form_lines)
     else:
         form_fields_text = "  (none extracted)"
@@ -60,13 +60,22 @@ def build_extraction_prompt(
     else:
         entities_text = "  (none extracted)"
 
-    prompt = f"""You are a payment data extraction AI for a federal government payment processing system.
-Analyze the following document content and extract structured payment information.
+    prompt = f"""You are a federal government payment data extraction AI for MissionPay Guard.
+You are analyzing a government payment document (such as SF 1034 Public Voucher, SF 1449 Contract/Order, or a Contract Award Reference).
+
+CRITICAL RULES:
+- IGNORE any headers like "SYNTHETIC TEST DOCUMENT", "NOT REAL", "FOR HACKATHON DEMO ONLY" - these are watermarks, not data.
+- The PAYEE/VENDOR is the company or person being PAID (look for "PAYEE NAME AND ADDRESS", "CONTRACTOR / OFFEROR", "CONTRACTOR / VENDOR").
+- The AMOUNT is the TOTAL payment amount (look for "TOTAL AMOUNT", "TOTAL AWARD AMOUNT", "APPROVED FOR", "CURRENT ORDER AMOUNT").
+- The INVOICE NUMBER is the voucher number or invoice reference (look for "VOUCHER NO.", "INV-", "Invoice Number").
+- The CONTRACT NUMBER identifies the governing contract (look for "CONTRACT NUMBER", "CONTRACT / AWARD NUMBER").
+- The ORDER NUMBER is the purchase order (look for "ORDER NUMBER", "PO-").
+- Always extract the LARGEST dollar amount as the total — individual line items are not the total.
 
 DOCUMENT RAW TEXT:
-{raw_text[:3000]}
+{raw_text[:4000]}
 
-FORM FIELDS (key-value pairs):
+FORM FIELDS (key-value pairs from Textract):
 {form_fields_text}
 
 TABLES:
@@ -75,20 +84,26 @@ TABLES:
 ENTITIES (from NLP):
 {entities_text}
 
-Extract the following fields and return them as a JSON object. Use null for any field you cannot determine:
+Extract the following fields from this government payment document. Return as a JSON object. Use null for any field you cannot determine with confidence:
 
 {{
-    "payee_name": "Name of the payment recipient (person or organization)",
-    "payee_account": "Bank account or routing number of the payee",
-    "amount": "Payment amount as a number (no currency symbol)",
-    "currency": "Currency code (default USD if not specified)",
-    "payment_type": "Type of payment (invoice, reimbursement, grant, contract, etc.)",
-    "invoice_number": "Invoice or reference number if present",
-    "due_date": "Payment due date in ISO format (YYYY-MM-DD) if present",
-    "description": "Brief description of what the payment is for"
+    "payee_name": "The vendor/contractor/payee being paid (company name, NOT a person's title or watermark)",
+    "payee_account": "Bank account or routing info if present, otherwise null",
+    "amount": "The TOTAL payment amount as a number (no $ sign, no commas). Use the largest total, not line items.",
+    "currency": "USD",
+    "payment_type": "invoice, purchase_order, or contract",
+    "invoice_number": "Voucher number or invoice number (e.g. INV-8821)",
+    "due_date": "Payment due date if present (MM/DD/YYYY format)",
+    "description": "Brief description of the payment purpose",
+    "contract_number": "Contract number if present (e.g. CON-2025-19)",
+    "order_number": "Purchase order number if present (e.g. PO-44519)",
+    "requisition_number": "Requisition number if present (e.g. REQ-7742)",
+    "vendor_uei": "Vendor UEI/DUNS number if present",
+    "appropriation_code": "Accounting/appropriation code if present",
+    "certifying_officer": "Name of the certifying or contracting officer"
 }}
 
-Return ONLY the JSON object with extracted values. Do not include any explanation."""
+Return ONLY the JSON object. No explanation text."""
 
     return prompt
 
@@ -123,20 +138,23 @@ def parse_claude_response(response: dict) -> dict:
     return response if isinstance(response, dict) else {}
 
 
-def entity_based_extraction(entities: list[dict], pii_entities: list[dict] = None) -> dict:
-    """Fallback extraction using entity data when Claude fails.
+def entity_based_extraction(entities: list[dict], pii_entities: list[dict] = None, form_fields: list[dict] = None) -> dict:
+    """Fallback extraction using entity data and form fields when Claude fails.
 
-    Extracts payment fields from Comprehend entities as a best-effort fallback.
+    Extracts payment fields from Comprehend entities and Textract form fields.
 
     Args:
         entities: Named entities from Comprehend DetectEntities.
         pii_entities: PII entities from Comprehend DetectPiiEntities.
+        form_fields: Key-value pairs from Textract form extraction.
 
     Returns:
         Dict with extracted payment fields (may be partially populated).
     """
     if pii_entities is None:
         pii_entities = []
+    if form_fields is None:
+        form_fields = []
 
     extracted = {
         "payee_name": None,
@@ -147,23 +165,62 @@ def entity_based_extraction(entities: list[dict], pii_entities: list[dict] = Non
         "invoice_number": None,
         "due_date": None,
         "description": "",
+        "contract_number": None,
+        "order_number": None,
+        "requisition_number": None,
+        "vendor_uei": None,
+        "appropriation_code": None,
     }
 
-    # Extract payee name from PERSON or ORGANIZATION entities
-    for entity in entities:
-        if entity["type"] == "PERSON" and extracted["payee_name"] is None:
-            extracted["payee_name"] = entity["text"]
-        elif entity["type"] == "ORGANIZATION" and extracted["payee_name"] is None:
-            extracted["payee_name"] = entity["text"]
-        elif entity["type"] == "DATE" and extracted["due_date"] is None:
-            extracted["due_date"] = entity["text"]
-        elif entity["type"] == "QUANTITY" and extracted["amount"] is None:
-            # Try to parse amount from quantity text
-            amount_text = entity["text"].replace("$", "").replace(",", "").strip()
+    # PRIORITY: Use form fields from Textract (most reliable)
+    ignore_values = {"SYNTHETIC", "HACKATHON", "NOT REAL", "DEMO ONLY", "TEST DOCUMENT"}
+    for field in form_fields:
+        key = (field.get("key") or "").upper().strip()
+        value = (field.get("value") or "").strip()
+        if not value or any(ig in value.upper() for ig in ignore_values):
+            continue
+
+        if any(k in key for k in ["PAYEE NAME", "CONTRACTOR", "VENDOR", "OFFEROR"]):
+            extracted["payee_name"] = value
+        elif any(k in key for k in ["TOTAL AMOUNT", "TOTAL AWARD", "APPROVED FOR"]):
+            cleaned = value.replace("$", "").replace(",", "").strip()
             try:
-                extracted["amount"] = float(amount_text)
+                extracted["amount"] = float(cleaned)
             except ValueError:
                 pass
+        elif any(k in key for k in ["VOUCHER NO", "INVOICE"]):
+            extracted["invoice_number"] = value
+        elif any(k in key for k in ["CONTRACT NUMBER", "CONTRACT / AWARD", "AWARD NUMBER"]):
+            extracted["contract_number"] = value
+        elif any(k in key for k in ["ORDER NUMBER"]):
+            extracted["order_number"] = value
+        elif any(k in key for k in ["REQUISITION"]):
+            extracted["requisition_number"] = value
+        elif "UEI" in key or "DUNS" in key:
+            extracted["vendor_uei"] = value
+        elif any(k in key for k in ["ACCOUNTING", "APPROPRIATION"]):
+            extracted["appropriation_code"] = value
+        elif any(k in key for k in ["DUE DATE", "PAYMENT DUE"]):
+            extracted["due_date"] = value
+
+    # Fill gaps from entities if form fields didn't provide enough
+    if not extracted["payee_name"]:
+        for entity in entities:
+            name = entity.get("text", "")
+            if entity["type"] == "ORGANIZATION" and not any(ig in name.upper() for ig in ignore_values):
+                extracted["payee_name"] = name
+                break
+
+    if not extracted["amount"]:
+        for entity in entities:
+            if entity["type"] == "QUANTITY":
+                amount_text = entity["text"].replace("$", "").replace(",", "").strip()
+                try:
+                    val = float(amount_text)
+                    if val > (extracted["amount"] or 0):
+                        extracted["amount"] = val
+                except ValueError:
+                    pass
 
     # Extract account numbers from PII entities
     for pii_entity in pii_entities:
@@ -193,6 +250,8 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     s3_bucket = event.get("s3_bucket", "")
     s3_key = event.get("s3_key", "")
     source_channel = event.get("source_channel", "unknown")
+    # Preserve payment_id (case ID) from the pipeline chain
+    incoming_payment_id = event.get("payment_id", "")
 
     logger.info("Running Bedrock extraction for document %s", document_id)
 
@@ -213,17 +272,18 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             document_id,
             str(e),
         )
-        structured_data = entity_based_extraction(entities, pii_entities)
+        structured_data = entity_based_extraction(entities, pii_entities, form_fields)
 
     # If Claude returned empty/incomplete data, supplement with entity extraction
     if not structured_data.get("payee_name") and not structured_data.get("amount"):
-        fallback = entity_based_extraction(entities, pii_entities)
+        fallback = entity_based_extraction(entities, pii_entities, form_fields)
         for key, value in fallback.items():
             if value is not None and not structured_data.get(key):
                 structured_data[key] = value
 
     # Ensure all required fields exist with defaults
-    payment_id = generate_uuid()
+    # Use payment_id from the pipeline (case ID from S3 path) if available
+    payment_id = incoming_payment_id or generate_uuid()
     result = {
         "payment_id": payment_id,
         "document_id": document_id,
@@ -239,6 +299,7 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         "s3_bucket": s3_bucket,
         "s3_key": s3_key,
         "extracted_fields": structured_data,
+        "textract_confidence": event.get("textract_confidence", 0.0),
         "submitted_at": get_current_timestamp(),
     }
 

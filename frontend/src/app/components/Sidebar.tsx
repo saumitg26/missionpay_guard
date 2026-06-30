@@ -22,9 +22,9 @@ type Screen =
 const navItems: { id: Screen; label: string; icon: React.ElementType; badge?: string }[] = [
   { id: "dashboard",     label: "Dashboard",      icon: LayoutDashboard },
   { id: "new-payment",   label: "New Payment",    icon: FilePlus },
-  { id: "cases",         label: "Cases",          icon: FolderOpen,  badge: "24" },
-  { id: "risk-firewall", label: "Risk Firewall",  icon: ShieldAlert, badge: "3" },
-  { id: "approvals",     label: "Approvals",      icon: CheckSquare, badge: "7" },
+  { id: "cases",         label: "Cases",          icon: FolderOpen },
+  { id: "risk-firewall", label: "Risk Firewall",  icon: ShieldAlert },
+  { id: "approvals",     label: "Approvals",      icon: CheckSquare },
   { id: "audit-packets", label: "Audit Packets",  icon: BookOpen },
   { id: "settings",      label: "Settings",       icon: Settings },
 ];

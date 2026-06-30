@@ -270,10 +270,16 @@ def handler(event: dict, context) -> dict:
     Returns:
         Dict with AI-generated explanation and recommendation.
     """
+    # The input is already unwrapped (output_path="$.Payload" on previous task)
     case_id = event.get("case_id", "")
     case_data = event.get("case_data", {})
     firewall_result = event.get("firewall_result", {})
     action = event.get("action", "explain")
+
+    # If no case_data, fetch from DynamoDB
+    if not case_data and case_id:
+        from utils.dynamodb_helpers import get_case
+        case_data = get_case(case_id) or {}
 
     logger.info("Compliance assistant invoked for case %s, action=%s", case_id, action)
 

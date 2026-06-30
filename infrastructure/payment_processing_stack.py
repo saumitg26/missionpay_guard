@@ -171,10 +171,14 @@ class PaymentProcessingStack(Stack):
         ))
         idp_role.add_to_policy(iam.PolicyStatement(
             actions=["bedrock:InvokeModel"],
-            resources=["arn:aws:bedrock:*::foundation-model/anthropic.*"],
+            resources=["*"],
         ))
         idp_role.add_to_policy(iam.PolicyStatement(
-            actions=["dynamodb:PutItem", "dynamodb:UpdateItem"],
+            actions=["aws-marketplace:ViewSubscriptions", "aws-marketplace:Subscribe"],
+            resources=["*"],
+        ))
+        idp_role.add_to_policy(iam.PolicyStatement(
+            actions=["dynamodb:PutItem", "dynamodb:UpdateItem", "dynamodb:GetItem"],
             resources=[
                 self.cases_table.table_arn,
                 self.audit_trail_table.table_arn,
@@ -204,7 +208,11 @@ class PaymentProcessingStack(Stack):
         ))
         firewall_role.add_to_policy(iam.PolicyStatement(
             actions=["bedrock:InvokeModel"],
-            resources=["arn:aws:bedrock:*::foundation-model/anthropic.*"],
+            resources=["*"],
+        ))
+        firewall_role.add_to_policy(iam.PolicyStatement(
+            actions=["aws-marketplace:ViewSubscriptions", "aws-marketplace:Subscribe"],
+            resources=["*"],
         ))
 
         # --- Approval Role: DynamoDB read/write, SNS publish, SFN callback ---
@@ -355,7 +363,7 @@ class PaymentProcessingStack(Stack):
         )
         create_case_role.add_to_policy(logs_policy)
         create_case_role.add_to_policy(iam.PolicyStatement(
-            actions=["dynamodb:PutItem"],
+            actions=["dynamodb:PutItem", "dynamodb:UpdateItem", "dynamodb:GetItem"],
             resources=[
                 self.cases_table.table_arn,
                 self.audit_trail_table.table_arn,
@@ -603,6 +611,22 @@ class PaymentProcessingStack(Stack):
             },
         )
 
+        # --- Upload URL Lambda (reuses create_case_role for S3 + DynamoDB access) ---
+        self.upload_url_fn = _lambda.Function(
+            self,
+            "UploadUrlFunction",
+            function_name="missionpay-upload-url",
+            runtime=lambda_runtime,
+            handler="lambdas.api.upload_url_handler.handler",
+            code=lambda_code,
+            role=create_case_role,
+            timeout=Duration.seconds(10),
+            environment={
+                **common_env,
+                "RAW_DOCUMENTS_BUCKET": self.documents_bucket.bucket_name,
+            },
+        )
+
         # --- List Cases API Lambda ---
         self.list_cases_fn = _lambda.Function(
             self,
@@ -724,27 +748,16 @@ class PaymentProcessingStack(Stack):
             self,
             "ManagerReviewTask",
             lambda_function=self.manager_review_fn,
-            integration_pattern=sfn.IntegrationPattern.WAIT_FOR_TASK_TOKEN,
-            payload=sfn.TaskInput.from_object({
-                "case_id": sfn.JsonPath.string_at("$.case_id"),
-                "risk_level": sfn.JsonPath.string_at("$.risk_level"),
-                "task_token": sfn.JsonPath.task_token,
-            }),
-            result_path="$.approval_result",
+            output_path="$.Payload",
+            retry_on_service_exceptions=True,
         )
 
         finance_hitl_review_task = sfn_tasks.LambdaInvoke(
             self,
             "FinanceHITLReviewTask",
             lambda_function=self.director_review_fn,
-            integration_pattern=sfn.IntegrationPattern.WAIT_FOR_TASK_TOKEN,
-            payload=sfn.TaskInput.from_object({
-                "case_id": sfn.JsonPath.string_at("$.case_id"),
-                "risk_level": sfn.JsonPath.string_at("$.risk_level"),
-                "firewall_result": sfn.JsonPath.object_at("$.firewall_result"),
-                "task_token": sfn.JsonPath.task_token,
-            }),
-            result_path="$.approval_result",
+            output_path="$.Payload",
+            retry_on_service_exceptions=True,
         )
 
         # Disbursement simulation
@@ -780,7 +793,7 @@ class PaymentProcessingStack(Stack):
         # ConfidenceCheck: route to Exception Copilot if confidence < 0.85
         confidence_check = sfn.Choice(self, "ConfidenceCheck")
         confidence_check.when(
-            sfn.Condition.number_less_than("$.extraction_confidence", 0.85),
+            sfn.Condition.number_less_than("$.confidence_score", 0.85),
             exception_copilot_task,
         ).otherwise(risk_firewall_task)
 
@@ -923,6 +936,10 @@ class PaymentProcessingStack(Stack):
         docs_resource.add_method(
             "GET",
             apigateway.LambdaIntegration(self.document_access_fn),
+        )
+        docs_resource.add_method(
+            "POST",
+            apigateway.LambdaIntegration(self.upload_url_fn),
         )
 
         # /cases/{id}/decision

@@ -81,15 +81,23 @@ export async function fetchCases(): Promise<PaymentCase[]> {
 }
 
 /** Create a new payment case */
-export async function createCase(payload: CreateCasePayload): Promise<{ caseId: string } | null> {
+export async function createCase(payload: CreateCasePayload): Promise<{ caseId: string; uploadUrl?: string } | null> {
   try {
     const res = await fetch(`${API_BASE}/cases`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return await res.json();
+    if (!res.ok) {
+      const text = await res.text();
+      console.error("Create case failed:", res.status, text);
+      throw new Error(`HTTP ${res.status}: ${text}`);
+    }
+    const data = await res.json();
+    return { 
+      caseId: data.case_id, 
+      uploadUrl: data.presigned_upload_url 
+    };
   } catch (err) {
     console.error("Failed to create case:", err);
     return null;

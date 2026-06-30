@@ -39,6 +39,9 @@ def handler(event, context):
     response = table.scan(Limit=50)
     items = response.get("Items", [])
 
+    # Filter out the counter item used for sequential ID generation
+    items = [i for i in items if i.get("case_id") != "__COUNTER__"]
+
     # Sort by updated_at descending
     items.sort(key=lambda x: x.get("updated_at", ""), reverse=True)
 

@@ -193,6 +193,7 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     document_id = event["document_id"]
     s3_bucket = event["s3_bucket"]
     s3_key = event["s3_key"]
+    payment_id = event.get("payment_id", "")
 
     logger.info("Processing document %s from s3://%s/%s", document_id, s3_bucket, s3_key)
 
@@ -221,6 +222,7 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
 
     return {
         "document_id": document_id,
+        "payment_id": payment_id,
         "raw_text": raw_text,
         "form_fields": form_fields,
         "tables": tables,

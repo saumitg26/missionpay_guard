@@ -129,6 +129,7 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     """
     document_id = event["document_id"]
     raw_text = event.get("raw_text", "")
+    payment_id = event.get("payment_id", "")
 
     logger.info("Running entity extraction for document %s (%d chars)", document_id, len(raw_text))
 
@@ -146,6 +147,13 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
 
     return {
         "document_id": document_id,
+        "payment_id": payment_id,
+        "raw_text": raw_text,
+        "form_fields": event.get("form_fields", []),
+        "tables": event.get("tables", []),
+        "textract_confidence": event.get("textract_confidence", 0.0),
+        "s3_bucket": event.get("s3_bucket", ""),
+        "s3_key": event.get("s3_key", ""),
         "entities": entities,
         "pii_entities": pii_entities,
     }

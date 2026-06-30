@@ -6,12 +6,30 @@ import logging
 
 import boto3
 
-from utils.helpers import generate_uuid, get_current_timestamp
+from utils.helpers import get_current_timestamp
 from utils.audit import log_audit_event
 from models.payment import CaseStatus
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
+
+
+def _get_next_case_number():
+    """Get the next sequential case number using a DynamoDB atomic counter."""
+    table_name = os.environ.get("CASES_TABLE_NAME", "missionpay-cases")
+    dynamodb = boto3.resource("dynamodb")
+    table = dynamodb.Table(table_name)
+
+    # Use a special counter item with case_id = "__COUNTER__"
+    response = table.update_item(
+        Key={"case_id": "__COUNTER__"},
+        UpdateExpression="SET #seq = if_not_exists(#seq, :start) + :inc",
+        ExpressionAttributeNames={"#seq": "sequence"},
+        ExpressionAttributeValues={":start": 0, ":inc": 1},
+        ReturnValues="UPDATED_NEW",
+    )
+    seq = int(response["Attributes"]["sequence"])
+    return seq
 
 
 def handler(event, context):
@@ -22,7 +40,9 @@ def handler(event, context):
     """
     logger.info("Create case handler invoked")
 
-    case_id = f"MPG-2024-{generate_uuid()[:6].upper()}"
+    # Generate sequential case ID: MPG-2025-000001
+    seq = _get_next_case_number()
+    case_id = f"MPG-2025-{seq:06d}"
     timestamp = get_current_timestamp()
 
     bucket_name = os.environ.get("RAW_DOCUMENTS_BUCKET", "")

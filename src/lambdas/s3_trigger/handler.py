@@ -52,8 +52,13 @@ def handler(event, context):
     document_id = generate_uuid()
     execution_name = f"doc-{document_id[:8]}"
 
+    # Extract case_id from S3 key path: quarantine/{case_id}/{filename}
+    key_parts = s3_key.split("/")
+    case_id = key_parts[1] if len(key_parts) >= 3 else ""
+
     sfn_input = {
         "document_id": document_id,
+        "payment_id": case_id,
         "s3_bucket": s3_bucket,
         "s3_key": s3_key,
     }

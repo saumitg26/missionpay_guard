@@ -450,12 +450,79 @@ CHECK_WEIGHTS = {
 # ============================================================
 
 
+def _bedrock_risk_analysis(case_data: dict) -> dict:
+    """Use Bedrock to analyze the payment case for fraud signals.
+
+    Returns:
+        Dict with ai_risk_score (0-100), ai_risk_level, reasoning, and flags.
+    """
+    try:
+        from utils.bedrock_client import invoke_claude
+        import json
+
+        vendor = case_data.get("vendor_name", "")
+        amount = case_data.get("invoice_amount", 0)
+        extracted = case_data.get("extracted_fields", {})
+        confidence = case_data.get("extraction_confidence", 0)
+        invoice_num = case_data.get("invoice_number", "")
+        po_num = case_data.get("purchase_order_number", "")
+        contract_id = case_data.get("contract_id", "")
+        documents = case_data.get("documents", [])
+
+        prompt = f"""You are a federal payment fraud detection AI. Analyze this payment case and assess the risk of fraud, waste, or improper payment.
+
+PAYMENT CASE DATA:
+- Vendor: {vendor}
+- Invoice Amount: ${amount:,.2f}
+- Invoice Number: {invoice_num}
+- Purchase Order: {po_num}
+- Contract ID: {contract_id}
+- OCR Extraction Confidence: {confidence:.0%}
+- Documents Uploaded: {len(documents)}
+- Extracted Fields: {json.dumps(extracted, default=str)[:1000]}
+
+ANALYZE FOR THESE FRAUD SIGNALS:
+1. Amount anomaly: Is the amount unusually high or suspicious for the described services?
+2. Document completeness: Are critical reference numbers (PO, contract) present and consistent?
+3. Vendor risk: Any indicators of shell company or unusual vendor naming?
+4. Duplicate indicators: Does the invoice number or amount suggest a potential duplicate?
+5. OCR confidence: Could low extraction confidence indicate document tampering or poor quality?
+6. Cross-reference consistency: Do the PO, contract, and invoice amounts/vendors align?
+
+Return ONLY a JSON object:
+{{
+    "risk_score": <number 0-100, where 0=no risk, 100=definite fraud>,
+    "risk_level": "<low|medium|high|critical>",
+    "reasoning": "<2-3 sentence explanation of the assessment>",
+    "flags": ["<list of specific concerns found>"],
+    "recommendation": "<approve|review|escalate|reject>"
+}}"""
+
+        response = invoke_claude(
+            prompt=prompt,
+            system_prompt="You are a precise fraud detection analyst. Return only valid JSON. Be conservative — flag genuine concerns but don't over-flag legitimate payments.",
+        )
+
+        # Parse response
+        if isinstance(response, dict) and "risk_score" in response:
+            return response
+        if isinstance(response, dict) and "text" in response:
+            text = response["text"]
+            start = text.find("{")
+            end = text.rfind("}") + 1
+            if start >= 0 and end > start:
+                return json.loads(text[start:end])
+
+        return {}
+    except Exception as e:
+        logger.warning(f"Bedrock risk analysis failed: {e}")
+        return {}
+
+
 def run_risk_firewall(case_data: dict) -> RiskFirewallResult:
     """Run all firewall checks and produce risk assessment.
 
-    Two payments with same amount can route differently based on:
-    - amount + extraction confidence + missing documents +
-    - compliance failures + vendor anomalies + duplicate risk + mission urgency
+    Uses both rules-based checks AND Bedrock AI reasoning for fraud detection.
 
     Args:
         case_data: Dictionary with case fields (from PaymentCase.to_dict()).
@@ -468,7 +535,7 @@ def run_risk_firewall(case_data: dict) -> RiskFirewallResult:
     checks_failed = []
     checks_warning = []
 
-    # Run all checks
+    # Run all rule-based checks
     for check_fn in FIREWALL_CHECKS:
         result = check_fn(case_data)
         check_name = result["check_name"]
@@ -480,8 +547,24 @@ def run_risk_firewall(case_data: dict) -> RiskFirewallResult:
         else:
             checks_warning.append(result)
 
-    # Calculate risk score (0.0 = no risk, 1.0 = maximum risk)
-    risk_score = _calculate_risk_score(checks_passed, checks_failed, checks_warning)
+    # Run Bedrock AI risk analysis
+    ai_analysis = _bedrock_risk_analysis(case_data)
+    ai_score = ai_analysis.get("risk_score", None)
+    ai_flags = ai_analysis.get("flags", [])
+    ai_reasoning = ai_analysis.get("reasoning", "")
+
+    # Calculate rules-based risk score
+    rules_score = _calculate_risk_score(checks_passed, checks_failed, checks_warning)
+
+    # Blend rules score with AI score (AI gets 60% weight if available)
+    if ai_score is not None:
+        ai_normalized = ai_score / 100.0  # Convert 0-100 to 0-1
+        risk_score = (rules_score * 0.4) + (ai_normalized * 0.6)
+        # Add AI flags as warnings
+        for flag in ai_flags:
+            checks_warning.append({"check_name": f"ai_flag: {flag}", "severity": "warning"})
+    else:
+        risk_score = rules_score
 
     # Determine risk level
     risk_level = _determine_risk_level(risk_score, checks_failed)
@@ -502,8 +585,8 @@ def run_risk_firewall(case_data: dict) -> RiskFirewallResult:
     )
 
     logger.info(
-        "Risk firewall complete for case %s: level=%s, score=%.2f, routing=%s",
-        case_id, risk_level, risk_score, routing,
+        "Risk firewall complete for case %s: level=%s, score=%.2f, routing=%s, ai_reasoning=%s",
+        case_id, risk_level, risk_score, routing, ai_reasoning[:100] if ai_reasoning else "N/A",
     )
 
     return firewall_result
@@ -586,8 +669,14 @@ def handler(event: dict, context) -> dict:
     Returns:
         Dict with case_id, firewall_result, and routing info.
     """
-    case_id = event.get("case_id", "")
-    case_data = event.get("case_data", event)
+    # The input is already unwrapped (output_path="$.Payload" on previous task)
+    case_id = event.get("case_id", "") or event.get("payment_id", "")
+
+    # Fetch full case data from DynamoDB for reliability
+    from utils.dynamodb_helpers import get_case
+    case_data = get_case(case_id) if case_id else {}
+    if not case_data:
+        case_data = event.get("case_data", event)
 
     # Ensure case_id is in case_data
     if "case_id" not in case_data:
@@ -595,6 +684,25 @@ def handler(event: dict, context) -> dict:
 
     # Run the firewall
     result = run_risk_firewall(case_data)
+
+    # Update the case record with risk results
+    from utils.dynamodb_helpers import update_case as _update_risk
+    if case_id:
+        try:
+            _update_risk(case_id, {
+                "risk_level": result.risk_level,
+                "risk_score": result.risk_score,
+                "risk_factors": result.checks_failed + result.checks_warning,
+                "firewall_checks": {
+                    "passed": result.checks_passed,
+                    "failed": result.checks_failed,
+                    "warning": result.checks_warning,
+                },
+                "approval_route": result.routing_recommendation,
+                "status": "risk_scoring",
+            })
+        except Exception as e:
+            logger.warning(f"Failed to update case with risk results: {e}")
 
     # Log audit event
     log_audit_event(

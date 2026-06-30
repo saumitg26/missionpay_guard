@@ -283,13 +283,18 @@ def handler(event: dict, context) -> dict:
     Returns:
         Dict with action results.
     """
+    # The input is already unwrapped (output_path="$.Payload" on previous task)
     action = event.get("action", "detect")
-    case_id = event.get("case_id", "")
+    case_id = event.get("case_id", "") or event.get("payment_id", "")
 
     logger.info("Exception copilot invoked for case %s, action=%s", case_id, action)
 
     if action == "detect":
-        case_data = event.get("case_data", {})
+        # Fetch case data from DynamoDB for reliability
+        from utils.dynamodb_helpers import get_case
+        case_data = get_case(case_id) if case_id else event.get("case_data", {})
+        if not case_data:
+            case_data = event.get("case_data", {})
         extraction_result = event.get("extraction_result", {})
 
         exception = detect_exception(case_data, extraction_result)

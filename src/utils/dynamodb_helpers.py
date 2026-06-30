@@ -103,6 +103,18 @@ def update_case(case_id: str, update_fields: dict) -> dict:
     Returns:
         The DynamoDB update_item response.
     """
+    from decimal import Decimal
+
+    def _convert_floats(obj):
+        """Recursively convert float values to Decimal for DynamoDB."""
+        if isinstance(obj, float):
+            return Decimal(str(obj))
+        elif isinstance(obj, dict):
+            return {k: _convert_floats(v) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [_convert_floats(v) for v in obj]
+        return obj
+
     table = _get_cases_table()
 
     update_expr_parts = []
@@ -114,7 +126,7 @@ def update_case(case_id: str, update_fields: dict) -> dict:
         attr_value = f":val{i}"
         update_expr_parts.append(f"{attr_name} = {attr_value}")
         expr_attr_names[attr_name] = key
-        expr_attr_values[attr_value] = value
+        expr_attr_values[attr_value] = _convert_floats(value)
 
     # Always update the timestamp
     update_expr_parts.append("#upd = :ts")

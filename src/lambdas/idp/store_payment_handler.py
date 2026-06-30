@@ -113,10 +113,12 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         status=status,
         vendor_name=payee_name,
         invoice_amount=amount,
-        invoice_number=event.get("invoice_number", ""),
+        invoice_number=event.get("invoice_number", "") or structured_data.get("invoice_number", ""),
+        purchase_order_number=structured_data.get("order_number", "") or "",
+        contract_id=structured_data.get("contract_number", "") or "",
         extracted_fields=structured_data,
         extraction_confidence=confidence_score,
-        document_type=event.get("payment_type", "unknown"),
+        document_type=event.get("payment_type", "unknown") or structured_data.get("payment_type", "unknown"),
         source_channel=event.get("source_channel", "unknown"),
         submitted_at=event.get("submitted_at", ""),
         payment_details={
@@ -125,9 +127,74 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         },
     )
 
-    # Store in DynamoDB (strip None values — DynamoDB rejects them)
+    # Store in DynamoDB — use update to preserve existing case data (like documents list)
+    from utils.dynamodb_helpers import get_case as _get_existing, update_case as _update_existing
+    existing_case = _get_existing(payment_id)
+
     case_data = _strip_none_values(payment.to_dict())
-    put_case(case_data)
+
+    if existing_case:
+        # Preserve existing documents list and other frontend-created fields
+        # Smart merge: only overwrite fields if the new value is better
+        existing_amount = float(existing_case.get("invoice_amount", 0))
+        new_amount = amount
+
+        # Only use new amount if: existing is 0, OR this document has an invoice number
+        # (meaning it's the actual invoice, not a contract ceiling or PO NTE)
+        has_invoice_number = bool(structured_data.get("invoice_number"))
+        if existing_amount > 0 and not has_invoice_number:
+            new_amount = existing_amount  # Keep existing amount from actual invoice
+
+        # Only overwrite vendor_name if we extracted something meaningful
+        new_vendor = payee_name
+        existing_vendor = existing_case.get("vendor_name", "")
+        if not new_vendor or len(new_vendor) < 3:
+            new_vendor = existing_vendor
+        # Prefer shorter vendor name (less likely to include full address)
+        if existing_vendor and len(existing_vendor) < len(new_vendor) and len(existing_vendor) > 5:
+            new_vendor = existing_vendor
+
+        update_fields = {
+            "status": case_data.get("status", "extracting"),
+            "vendor_name": new_vendor,
+            "invoice_amount": new_amount,
+            "extraction_confidence": confidence_score,
+            "document_type": case_data.get("document_type", "unknown"),
+            "payment_details": case_data.get("payment_details", {}),
+        }
+        # Only set these if they have values (don't overwrite with empty)
+        if case_data.get("invoice_number"):
+            update_fields["invoice_number"] = case_data["invoice_number"]
+        if case_data.get("purchase_order_number"):
+            update_fields["purchase_order_number"] = case_data["purchase_order_number"]
+        if case_data.get("contract_id"):
+            update_fields["contract_id"] = case_data["contract_id"]
+
+        # Merge extracted fields with existing ones
+        existing_fields = existing_case.get("extracted_fields", {})
+        # For the amount field, only overwrite if this document has an invoice number
+        new_fields = {k: v for k, v in structured_data.items() if v}
+        if not has_invoice_number and "amount" in new_fields and "amount" in existing_fields:
+            # Don't overwrite amount from a non-invoice document
+            del new_fields["amount"]
+        # For payee_name, prefer the shorter/cleaner version (without address)
+        if "payee_name" in new_fields and "payee_name" in existing_fields:
+            existing_pn = existing_fields["payee_name"]
+            new_pn = new_fields["payee_name"]
+            # Keep whichever is shorter but still meaningful (>5 chars)
+            if existing_pn and len(existing_pn) > 5 and len(existing_pn) < len(new_pn):
+                del new_fields["payee_name"]
+        merged_fields = {**existing_fields, **new_fields}
+        # Ensure the displayed amount matches invoice_amount
+        merged_fields["amount"] = new_amount
+        # Ensure payee_name in fields matches vendor_name
+        merged_fields["payee_name"] = new_vendor
+        update_fields["extracted_fields"] = merged_fields
+
+        _update_existing(payment_id, _strip_none_values(update_fields))
+    else:
+        # New case — full put
+        put_case(case_data)
 
     logger.info(
         "Payment %s stored successfully with confidence %.3f and status %s",

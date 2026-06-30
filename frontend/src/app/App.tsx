@@ -36,9 +36,9 @@ const screenMeta: Record<Screen, { title: string; subtitle: string }> = {
 const sidebarMap: Record<SidebarScreen, Screen> = {
   "dashboard":     "dashboard",
   "new-payment":   "new-payment",
-  "cases":         "extraction",
-  "risk-firewall": "risk-firewall",
-  "approvals":     "approvals",
+  "cases":         "dashboard",
+  "risk-firewall": "dashboard",
+  "approvals":     "dashboard",
   "audit-packets": "audit-packets",
   "settings":      "settings",
 };
@@ -60,6 +60,7 @@ export default function App() {
   const [userRole, setUserRole] = useState<string>("analyst");
   const [userName, setUserName] = useState<string>("M. Anderson");
   const [activeCaseId, setActiveCaseId] = useState<string | null>(null);
+  const [auditPackets, setAuditPackets] = useState<AuditPacket[]>([]);
 
   if (!authenticated) {
     return (
@@ -97,9 +98,9 @@ export default function App() {
       case "risk-firewall":
         return <RiskFirewall onNext={() => setScreen("approvals")} caseId={activeCaseId || undefined} />;
       case "approvals":
-        return <ApprovalAudit caseId={activeCaseId || undefined} />;
+        return <ApprovalAudit caseId={activeCaseId || undefined} onGeneratePacket={(packet) => setAuditPackets(p => [...p, packet])} />;
       case "audit-packets":
-        return <AuditPacketsPlaceholder />;
+        return <AuditPacketsView packets={auditPackets} />;
       case "settings":
         return <SettingsPlaceholder />;
     }
@@ -164,15 +165,105 @@ function WorkflowBreadcrumb({ current, onNavigate }: { current: Screen; onNaviga
   );
 }
 
-function AuditPacketsPlaceholder() {
+function AuditPacketsView({ packets }: { packets: AuditPacket[] }) {
+  const [viewing, setViewing] = useState<AuditPacket | null>(null);
+
+  if (viewing) {
+    return (
+      <div className="flex-1 bg-slate-50 p-6 overflow-y-auto">
+        <div className="max-w-4xl mx-auto">
+          <button onClick={() => setViewing(null)} className="text-xs text-blue-600 hover:text-blue-800 mb-4">← Back to all packets</button>
+          <div className="bg-white border border-slate-200 rounded-lg p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-slate-900">Audit Evidence Packet</h2>
+              <span className="text-[10px] font-semibold text-green-700 bg-green-50 border border-green-200 px-2 py-1 rounded">SEALED</span>
+            </div>
+            <div className="space-y-4 text-xs">
+              <div className="grid grid-cols-2 gap-4">
+                <div><span className="text-slate-400">Packet ID:</span> <span className="font-mono">{viewing.id}</span></div>
+                <div><span className="text-slate-400">Generated:</span> {viewing.generatedAt}</div>
+                <div><span className="text-slate-400">Case ID:</span> <span className="font-mono text-blue-600">{viewing.caseId}</span></div>
+                <div><span className="text-slate-400">Status:</span> {viewing.status}</div>
+                <div><span className="text-slate-400">Vendor:</span> {viewing.vendor}</div>
+                <div><span className="text-slate-400">Amount:</span> ${viewing.amount?.toLocaleString()}</div>
+              </div>
+              <div className="border-t border-slate-100 pt-3">
+                <div className="font-semibold text-slate-700 mb-2">Risk Assessment</div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div><span className="text-slate-400">Risk Level:</span> <span className="font-semibold">{viewing.riskLevel}</span></div>
+                  <div><span className="text-slate-400">Risk Score:</span> {viewing.riskScore}/100</div>
+                </div>
+                {viewing.riskFactors.length > 0 && (
+                  <div className="mt-2"><span className="text-slate-400">Factors:</span> {viewing.riskFactors.join(", ")}</div>
+                )}
+              </div>
+              <div className="border-t border-slate-100 pt-3">
+                <div className="font-semibold text-slate-700 mb-2">Extracted Fields</div>
+                <div className="bg-slate-50 rounded p-3 space-y-1">
+                  {Object.entries(viewing.extractedFields).map(([k, v]) => (
+                    <div key={k}><span className="text-slate-400">{k}:</span> <span className="font-mono">{String(v)}</span></div>
+                  ))}
+                </div>
+              </div>
+              <div className="border-t border-slate-100 pt-3">
+                <div className="font-semibold text-slate-700 mb-2">Reviewer Decision</div>
+                <div><span className="text-slate-400">Decision:</span> <span className="font-semibold uppercase">{viewing.decision || "Pending"}</span></div>
+                {viewing.comment && <div><span className="text-slate-400">Comment:</span> {viewing.comment}</div>}
+              </div>
+              <div className="border-t border-slate-100 pt-3">
+                <div><span className="text-slate-400">Documents:</span> {viewing.documents.length} file(s)</div>
+                <div><span className="text-slate-400">Integrity Hash:</span> <span className="font-mono text-[10px]">{viewing.integrityHash}</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex-1 bg-slate-50 p-6">
-      <div className="bg-white border border-slate-200 rounded-lg p-8 text-center">
-        <div className="text-slate-400 text-sm">Completed audit evidence packages are stored here after approval workflows are finalized and sealed in S3.</div>
-        <div className="mt-4 text-xs text-slate-300 font-mono">Connects to S3 evidence vault in production</div>
-      </div>
+      {packets.length === 0 ? (
+        <div className="bg-white border border-slate-200 rounded-lg p-8 text-center">
+          <div className="text-slate-400 text-sm">No audit packets generated yet.</div>
+          <div className="mt-2 text-xs text-slate-300">Complete a case review and click "Generate Audit Packet" on the Approval page.</div>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          <h2 className="text-slate-900 text-sm font-semibold">Generated Audit Packets ({packets.length})</h2>
+          {packets.map((packet) => (
+            <div key={packet.id} onClick={() => setViewing(packet)} className="bg-white border border-slate-200 rounded-lg p-4 flex items-center justify-between hover:bg-blue-50/30 cursor-pointer transition-colors">
+              <div>
+                <div className="text-sm font-medium text-slate-800">{packet.caseId} — {packet.vendor}</div>
+                <div className="text-xs text-slate-500 mt-0.5">${packet.amount?.toLocaleString()} · Risk: {packet.riskLevel} · {packet.decision || "Pending"}</div>
+              </div>
+              <div className="text-right">
+                <div className="text-[10px] text-slate-400 font-mono">{packet.generatedAt}</div>
+                <span className="text-[10px] font-semibold text-green-700 bg-green-50 border border-green-200 px-2 py-0.5 rounded">SEALED</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
+}
+
+interface AuditPacket {
+  id: string;
+  generatedAt: string;
+  caseId: string;
+  status: string;
+  vendor: string;
+  amount: number;
+  riskLevel: string;
+  riskScore: number;
+  riskFactors: string[];
+  extractedFields: Record<string, unknown>;
+  decision: string;
+  comment: string;
+  documents: string[];
+  integrityHash: string;
 }
 
 function SettingsPlaceholder() {
