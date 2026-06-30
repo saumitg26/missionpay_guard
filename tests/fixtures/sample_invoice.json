@@ -1,0 +1,137 @@
+{
+  "DocumentMetadata": {
+    "Pages": 1
+  },
+  "Blocks": [
+    {
+      "BlockType": "PAGE",
+      "Geometry": {
+        "BoundingBox": {"Width": 1.0, "Height": 1.0, "Left": 0.0, "Top": 0.0}
+      },
+      "Id": "page-001",
+      "Relationships": [
+        {"Type": "CHILD", "Ids": ["line-001", "line-002", "line-003", "line-004", "line-005"]}
+      ]
+    },
+    {
+      "BlockType": "LINE",
+      "Text": "INVOICE #INV-2024-0042",
+      "Confidence": 99.5,
+      "Id": "line-001",
+      "Geometry": {
+        "BoundingBox": {"Width": 0.4, "Height": 0.03, "Left": 0.3, "Top": 0.05}
+      }
+    },
+    {
+      "BlockType": "LINE",
+      "Text": "Federal Supplies Inc.",
+      "Confidence": 98.7,
+      "Id": "line-002",
+      "Geometry": {
+        "BoundingBox": {"Width": 0.3, "Height": 0.03, "Left": 0.05, "Top": 0.12}
+      }
+    },
+    {
+      "BlockType": "LINE",
+      "Text": "Amount Due: $45,000.00",
+      "Confidence": 97.2,
+      "Id": "line-003",
+      "Geometry": {
+        "BoundingBox": {"Width": 0.35, "Height": 0.03, "Left": 0.05, "Top": 0.25}
+      }
+    },
+    {
+      "BlockType": "LINE",
+      "Text": "Due Date: 2024-03-15",
+      "Confidence": 98.1,
+      "Id": "line-004",
+      "Geometry": {
+        "BoundingBox": {"Width": 0.3, "Height": 0.03, "Left": 0.05, "Top": 0.30}
+      }
+    },
+    {
+      "BlockType": "LINE",
+      "Text": "Account: FSI987654321",
+      "Confidence": 96.8,
+      "Id": "line-005",
+      "Geometry": {
+        "BoundingBox": {"Width": 0.3, "Height": 0.03, "Left": 0.05, "Top": 0.35}
+      }
+    },
+    {
+      "BlockType": "KEY_VALUE_SET",
+      "EntityTypes": ["KEY"],
+      "Confidence": 98.3,
+      "Id": "kv-key-001",
+      "Relationships": [
+        {"Type": "VALUE", "Ids": ["kv-val-001"]},
+        {"Type": "CHILD", "Ids": ["word-001"]}
+      ]
+    },
+    {
+      "BlockType": "KEY_VALUE_SET",
+      "EntityTypes": ["VALUE"],
+      "Confidence": 97.8,
+      "Id": "kv-val-001",
+      "Relationships": [
+        {"Type": "CHILD", "Ids": ["word-002"]}
+      ]
+    },
+    {
+      "BlockType": "WORD",
+      "Text": "Invoice Number:",
+      "Confidence": 99.1,
+      "Id": "word-001"
+    },
+    {
+      "BlockType": "WORD",
+      "Text": "INV-2024-0042",
+      "Confidence": 98.9,
+      "Id": "word-002"
+    },
+    {
+      "BlockType": "KEY_VALUE_SET",
+      "EntityTypes": ["KEY"],
+      "Confidence": 97.5,
+      "Id": "kv-key-002",
+      "Relationships": [
+        {"Type": "VALUE", "Ids": ["kv-val-002"]},
+        {"Type": "CHILD", "Ids": ["word-003"]}
+      ]
+    },
+    {
+      "BlockType": "KEY_VALUE_SET",
+      "EntityTypes": ["VALUE"],
+      "Confidence": 96.9,
+      "Id": "kv-val-002",
+      "Relationships": [
+        {"Type": "CHILD", "Ids": ["word-004"]}
+      ]
+    },
+    {
+      "BlockType": "WORD",
+      "Text": "Amount:",
+      "Confidence": 98.5,
+      "Id": "word-003"
+    },
+    {
+      "BlockType": "WORD",
+      "Text": "$45,000.00",
+      "Confidence": 97.2,
+      "Id": "word-004"
+    }
+  ],
+  "AnalyzeDocumentModelVersion": "1.0",
+  "_mock_metadata": {
+    "description": "Mock Textract AnalyzeDocument response for a standard invoice",
+    "expected_extraction": {
+      "payee_name": "Federal Supplies Inc.",
+      "amount": 45000.00,
+      "currency": "USD",
+      "payment_type": "invoice_payment",
+      "invoice_number": "INV-2024-0042",
+      "due_date": "2024-03-15",
+      "payee_account": "FSI987654321"
+    }
+  }
+}

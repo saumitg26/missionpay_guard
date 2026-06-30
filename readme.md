@@ -1,151 +1,176 @@
-# DC Summit 2026 Global Government Hackathon — Team Repository
+# MissionPay Guard
 
-Welcome! This is your team's Git repository for the DC Summit 2026 Global Government Hackathon. Use it to build, collaborate on, and submit your hackathon project.
+**Pre-disbursement payment protection system for federal agencies.**
 
-## How This Repository Works
+MissionPay Guard prevents improper payments *before* money moves by combining AI-powered document processing with a multi-factor Payment Risk Firewall and human-in-the-loop exception resolution.
 
-This repository is hosted on [AWS CodeCommit](https://aws.amazon.com/codecommit/) in your team's AWS account. It was automatically provisioned when your environment was set up, and is **already cloned** to your DCV desktop at:
+## Architecture Overview
 
 ```
-C:\Users\participant\workshop
+┌──────────────────────────────────────────────────────────────────────┐
+│                        MissionPay Guard                               │
+├──────────────────────────────────────────────────────────────────────┤
+│                                                                      │
+│  ┌──────────┐   ┌──────────────┐   ┌────────────────────────────┐   │
+│  │  Secure  │──▶│  IDP Engine  │──▶│  Payment Risk Firewall     │   │
+│  │  Intake  │   │  (Textract + │   │  (9 independent checks)    │   │
+│  │  (S3     │   │  Comprehend +│   │                            │   │
+│  │  Quarant)│   │  Bedrock)    │   │  PO Match · Vendor Verify  │   │
+│  └──────────┘   └──────────────┘   │  Duplicate · Threshold     │   │
+│                                     │  Contract · Banking Change │   │
+│                                     │  OCR Confidence · Mission  │   │
+│                                     │  Document Completeness     │   │
+│                                     └─────────────┬──────────────┘   │
+│                                                   │                  │
+│                       ┌───────────────────────────┼───────┐          │
+│                       │                           │       │          │
+│                       ▼                           ▼       ▼          │
+│  ┌─────────────────────────┐   ┌──────────┐   ┌──────────────┐     │
+│  │  Exception Resolution   │   │ Approval │   │  Simulated   │     │
+│  │  Copilot (Bedrock)      │   │ Routing  │   │ Disbursement │     │
+│  │  AI proposes, human     │   │ (multi-  │   │              │     │
+│  │  approves               │   │  factor) │   │              │     │
+│  └─────────────────────────┘   └──────────┘   └──────────────┘     │
+│                                                                      │
+│  ┌──────────────────────────────────────────────────────────────┐   │
+│  │              Immutable Audit Trail (DynamoDB)                  │   │
+│  └──────────────────────────────────────────────────────────────┘   │
+└──────────────────────────────────────────────────────────────────────┘
 ```
 
-Kiro opens this folder by default when you launch it.
+## Key Differentiators
 
-### Connection to CodeCommit
+### 1. Spend Provenance + Payment Risk Firewall
 
-The repository authenticates via [git-remote-codecommit](https://docs.aws.amazon.com/codecommit/latest/userguide/setting-up-git-remote-codecommit.html), which uses your instance's AWS credentials — **no additional Git credential setup is required**. You can push and pull using standard Git commands immediately.
+Unlike simple amount-threshold systems, the Risk Firewall runs **9 independent checks** that prove a payment is authorized, compliant, and connected to the correct spending authority *before* disbursement:
 
-The CodeCommit HTTPS clone URL is also available in the Workshop Studio **Event Outputs** panel (look for `CodeCommitUrl`) if you need to clone the repo elsewhere.
+| Check | What it verifies |
+|-------|-----------------|
+| PO Match | Invoice matches purchase order (vendor + amount) |
+| Vendor Verification | Vendor is in verified database, not suspended |
+| Duplicate Invoice | Invoice number not previously processed |
+| Amount Threshold | Escalation at $50K/$100K boundaries |
+| Contract Validation | Contract is active, amount within limits |
+| Banking Change | Payment info matches vendor record (fraud signal) |
+| OCR Confidence | Extraction confidence meets threshold |
+| Mission Classification | Routine vs. mission-critical routing |
+| Document Completeness | All required supporting docs present |
 
-## Getting Started
+**Same amount, different routing**: Two $45,000 payments can receive completely different risk scores and approval routes depending on vendor trust, PO validity, and extraction confidence.
 
-Open **PowerShell** or the **Kiro terminal** and start building:
+### 2. Exception Resolution Copilot
 
-```powershell
-cd C:\Users\participant\workshop
+When something goes wrong, the system does NOT secretly fix the payment. Instead:
 
-# Check current status
-git status
+1. Exception detected (e.g., low OCR confidence)
+2. Amazon Bedrock explains the issue in plain English
+3. Human reviews the source document
+4. Human approves or corrects the value
+5. System revalidates
+6. Every step is audit-logged
 
-# Create a branch for your feature
-git checkout -b feature/my-awesome-idea
+**Principle: AI proposes. Human approves. Audit trail records everything.**
 
-# Make changes, then stage and commit
-git add .
-git commit -m "Initial project structure"
+## AWS Services Used
 
-# Push to CodeCommit
-git push origin feature/my-awesome-idea
-```
+| Service | Purpose |
+|---------|---------|
+| Amazon S3 | Encrypted quarantine vault for documents |
+| Amazon Textract | OCR and document structure extraction |
+| Amazon Comprehend | Entity extraction (vendors, amounts, dates) |
+| Amazon Bedrock | Contextual understanding + exception explanations |
+| Amazon DynamoDB | Payment cases + immutable audit trail |
+| AWS Step Functions | Workflow orchestration |
+| AWS Lambda | Serverless compute for each pipeline stage |
+| Amazon SNS | Notifications and alerts |
+| AWS CDK | Infrastructure as code |
 
-### Suggested Workflow
+## How to Run
 
-1. **Create a feature branch** — Keep `main` clean; do your work on feature branches.
-2. **Commit often** — Small, frequent commits make it easier to track progress and recover from mistakes.
-3. **Push regularly** — Your code is only saved to CodeCommit when you push. Don't lose work!
-4. **Merge to main** when your feature is ready:
-   ```powershell
-   git checkout main
-   git merge feature/my-awesome-idea
-   git push origin main
-   ```
-
-## Tools Available on Your Desktop
-
-Your DCV instance comes pre-loaded with everything you need:
-
-| Tool | Purpose |
-|------|---------|
-| **Kiro** | AI-powered IDE — spec-driven development, autopilot, hooks |
-| **Amazon Quick** | AI work assistant — research, apps, flows, documentation |
-| **AWS CLI v2** | Interact with AWS services from the command line |
-| **AWS CDK** | Infrastructure as code (TypeScript, Python, Java, .NET, Go) |
-| **Python 3.12+** | Python runtime with pip |
-| **Node.js 22 + npm** | JavaScript/TypeScript runtime |
-| **Java 17 & 21 (Corretto)** | Java runtime with Maven |
-| **Go** | Go programming language |
-| **.NET 8 SDK** | .NET runtime and SDK |
-| **Docker Desktop** | Container runtime |
-| **Git** | Version control (this repo!) |
-
-## AWS Services
-
-Your account includes access to a broad set of AWS services. Highlights:
-
-- **Amazon Bedrock** — Foundation models (Claude Sonnet 4.6, Nova Pro, Nova Canvas, Titan Embeddings), Agents, Knowledge Bases, AgentCore
-- **AWS Lambda** — Serverless compute
-- **Amazon ECS / EKS** — Container orchestration
-- **Amazon S3 / DynamoDB** — Storage and databases
-- **AWS Step Functions** — Workflow orchestration
-- **Amazon SageMaker** — ML notebook instances
-
-See the workshop guide for the full list of available services and permissions.
-
-## Need Help?
-
-- **Workshop guide**: Available at the Workshop Studio URL provided by your facilitator
-- **AWS credentials expired?** Go to Workshop Studio → *Get AWS CLI credentials* and set fresh ones in PowerShell
-- **Git issues?** Make sure your AWS environment variables are set (credentials are needed for `git-remote-codecommit`)
-
----
-
-Good luck and happy building! 🚀
-
----
-
-## For Workshop Developers / Facilitators
-
-> This section documents how this repository's contents are packaged and deployed into participant CodeCommit repositories. Participants can ignore this.
-
-### How CodeCommit Gets Populated
-
-The contents of the `code/workshop/` directory in the workshop source repository are:
-
-1. **Zipped** into `assets/project.zip`
-2. **Uploaded to S3** (either Workshop Studio's managed bucket or a test bucket)
-3. **Loaded into CodeCommit** by the CloudFormation template (`static/cloudformation/codecommit.yaml`) which references the S3 bucket/key for initial repository content
-
-### Regenerating the Zip
-
-After making changes to `code/workshop/`, regenerate the asset zip with:
+### Backend Demo (CLI)
 
 ```bash
-# Package assets locally (without uploading to S3)
-bash scripts/workshop-studio/update-assets.sh --no-sync
-
-# Package and upload to Workshop Studio's S3 bucket
-bash scripts/workshop-studio/update-assets.sh
-
-# Dry run — see what would happen without doing anything
-bash scripts/workshop-studio/update-assets.sh --dry-run
+pip install -r requirements.txt
+python demo/run_demo.py
 ```
 
-This runs the `update-assets.sh` script which zips `code/workshop/` → `assets/project.zip` and syncs the `assets/` directory to S3.
+Runs a complete end-to-end demo using mocked AWS services. No credentials needed.
 
-> **Important:** After uploading via Workshop Studio, the assets are only available once a **commit is pushed** to the workshop repository.
-
-### For Standalone / Isengard Testing
-
-If you're testing outside Workshop Studio (e.g., in an Isengard account), use the standalone upload script instead:
+### Frontend Dashboard
 
 ```bash
-# Creates a private S3 bucket and uploads assets
-bash scripts/standalone/upload-test-assets.sh
-
-# Use an existing bucket
-bash scripts/standalone/upload-test-assets.sh --bucket my-bucket
-
-# Clean up
-bash scripts/standalone/upload-test-assets.sh --delete
+cd frontend
+npm install
+npm run dev
 ```
 
-Then deploy the CloudFormation stack with:
+Opens the MissionPay Guard dashboard with:
+- Payment case tracker
+- Risk Firewall visualization
+- Exception Copilot interface
+- Approval queue
+- Audit trail viewer
+
+### Deploy to AWS
+
 ```bash
-aws cloudformation deploy \
-  --template-file static/cloudformation/codecommit.yaml \
-  --stack-name hackathon-codecommit \
-  --parameter-overrides \
-    S3CodeBucket=<bucket-name> \
-    S3CodeKey=<prefix>/project.zip
+cdk deploy
+```
+
+Deploys the full infrastructure stack via AWS CDK.
+
+### Run Tests
+
+```bash
+pytest
+```
+
+Runs unit, integration, and property-based tests.
+
+## Project Structure
+
+```
+workshop/
+├── demo/
+│   ├── run_demo.py              # End-to-end CLI demo
+│   └── README.md                # Demo documentation
+├── frontend/
+│   └── src/
+│       ├── components/
+│       │   ├── Dashboard.jsx
+│       │   ├── RiskFirewall.jsx
+│       │   ├── ExceptionCopilot.jsx
+│       │   ├── ApprovalQueue.jsx
+│       │   ├── PaymentTracker.jsx
+│       │   └── AuditTrail.jsx
+│       └── mockData.js
+├── infrastructure/
+│   ├── app.py                   # CDK app entry point
+│   └── payment_processing_stack.py
+├── src/
+│   ├── models/
+│   │   └── payment.py           # PaymentCase, RiskFirewallResult, ExceptionRecord
+│   ├── lambdas/
+│   │   ├── ingestion/           # Secure intake + quarantine
+│   │   ├── idp/                 # Textract + Comprehend + Bedrock
+│   │   ├── validation/
+│   │   │   └── risk_firewall.py # 9-check Payment Risk Firewall
+│   │   ├── exception_copilot/   # AI explains, human resolves
+│   │   ├── approval/            # Multi-factor routing
+│   │   ├── disbursement/        # Simulated disbursement
+│   │   ├── audit/               # State transitions + audit writer
+│   │   └── notifications/       # SNS alerts
+│   └── utils/
+│       ├── audit.py             # Audit trail logging
+│       ├── dynamodb_helpers.py  # DynamoDB operations
+│       └── helpers.py           # UUID, timestamp utilities
+├── tests/
+│   ├── unit/
+│   │   └── test_risk_firewall.py
+│   ├── integration/
+│   │   └── test_workflow_integration.py
+│   └── property/
+│       └── test_payment_properties.py
+├── requirements.txt
+└── cdk.json
 ```

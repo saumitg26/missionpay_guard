@@ -1,0 +1,137 @@
+{
+  "DocumentMetadata": {
+    "Pages": 1
+  },
+  "Blocks": [
+    {
+      "BlockType": "PAGE",
+      "Geometry": {
+        "BoundingBox": {"Width": 1.0, "Height": 1.0, "Left": 0.0, "Top": 0.0}
+      },
+      "Id": "page-001",
+      "Relationships": [
+        {"Type": "CHILD", "Ids": ["line-001", "line-002", "line-003", "line-004", "line-005"]}
+      ]
+    },
+    {
+      "BlockType": "LINE",
+      "Text": "PAYMENT RECEIPT",
+      "Confidence": 99.7,
+      "Id": "line-001",
+      "Geometry": {
+        "BoundingBox": {"Width": 0.3, "Height": 0.03, "Left": 0.35, "Top": 0.03}
+      }
+    },
+    {
+      "BlockType": "LINE",
+      "Text": "Receipt #: REC-2024-00893",
+      "Confidence": 98.2,
+      "Id": "line-002",
+      "Geometry": {
+        "BoundingBox": {"Width": 0.4, "Height": 0.03, "Left": 0.05, "Top": 0.08}
+      }
+    },
+    {
+      "BlockType": "LINE",
+      "Text": "Paid to: Public Works Contractors",
+      "Confidence": 97.5,
+      "Id": "line-003",
+      "Geometry": {
+        "BoundingBox": {"Width": 0.45, "Height": 0.03, "Left": 0.05, "Top": 0.15}
+      }
+    },
+    {
+      "BlockType": "LINE",
+      "Text": "Amount Paid: $2,350.00",
+      "Confidence": 98.9,
+      "Id": "line-004",
+      "Geometry": {
+        "BoundingBox": {"Width": 0.35, "Height": 0.03, "Left": 0.05, "Top": 0.22}
+      }
+    },
+    {
+      "BlockType": "LINE",
+      "Text": "Date: 2024-02-28",
+      "Confidence": 99.1,
+      "Id": "line-005",
+      "Geometry": {
+        "BoundingBox": {"Width": 0.25, "Height": 0.03, "Left": 0.05, "Top": 0.29}
+      }
+    },
+    {
+      "BlockType": "KEY_VALUE_SET",
+      "EntityTypes": ["KEY"],
+      "Confidence": 98.0,
+      "Id": "kv-key-001",
+      "Relationships": [
+        {"Type": "VALUE", "Ids": ["kv-val-001"]},
+        {"Type": "CHILD", "Ids": ["word-001"]}
+      ]
+    },
+    {
+      "BlockType": "KEY_VALUE_SET",
+      "EntityTypes": ["VALUE"],
+      "Confidence": 97.5,
+      "Id": "kv-val-001",
+      "Relationships": [
+        {"Type": "CHILD", "Ids": ["word-002"]}
+      ]
+    },
+    {
+      "BlockType": "WORD",
+      "Text": "Paid to:",
+      "Confidence": 98.5,
+      "Id": "word-001"
+    },
+    {
+      "BlockType": "WORD",
+      "Text": "Public Works Contractors",
+      "Confidence": 97.5,
+      "Id": "word-002"
+    },
+    {
+      "BlockType": "KEY_VALUE_SET",
+      "EntityTypes": ["KEY"],
+      "Confidence": 98.7,
+      "Id": "kv-key-002",
+      "Relationships": [
+        {"Type": "VALUE", "Ids": ["kv-val-002"]},
+        {"Type": "CHILD", "Ids": ["word-003"]}
+      ]
+    },
+    {
+      "BlockType": "KEY_VALUE_SET",
+      "EntityTypes": ["VALUE"],
+      "Confidence": 98.2,
+      "Id": "kv-val-002",
+      "Relationships": [
+        {"Type": "CHILD", "Ids": ["word-004"]}
+      ]
+    },
+    {
+      "BlockType": "WORD",
+      "Text": "Amount:",
+      "Confidence": 99.0,
+      "Id": "word-003"
+    },
+    {
+      "BlockType": "WORD",
+      "Text": "$2,350.00",
+      "Confidence": 98.9,
+      "Id": "word-004"
+    }
+  ],
+  "AnalyzeDocumentModelVersion": "1.0",
+  "_mock_metadata": {
+    "description": "Mock Textract AnalyzeDocument response for a payment receipt",
+    "expected_extraction": {
+      "payee_name": "Public Works Contractors",
+      "amount": 2350.00,
+      "currency": "USD",
+      "payment_type": "reimbursement",
+      "invoice_number": "REC-2024-00893",
+      "due_date": null,
+      "payee_account": null
+    }
+  }
+}

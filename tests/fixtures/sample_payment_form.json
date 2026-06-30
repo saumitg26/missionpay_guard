@@ -1,0 +1,146 @@
+{
+  "DocumentMetadata": {
+    "Pages": 1
+  },
+  "Blocks": [
+    {
+      "BlockType": "PAGE",
+      "Geometry": {
+        "BoundingBox": {"Width": 1.0, "Height": 1.0, "Left": 0.0, "Top": 0.0}
+      },
+      "Id": "page-001",
+      "Relationships": [
+        {"Type": "CHILD", "Ids": ["line-001", "line-002", "line-003", "line-004", "line-005", "line-006"]}
+      ]
+    },
+    {
+      "BlockType": "LINE",
+      "Text": "GOVERNMENT PAYMENT AUTHORIZATION FORM",
+      "Confidence": 99.8,
+      "Id": "line-001",
+      "Geometry": {
+        "BoundingBox": {"Width": 0.6, "Height": 0.03, "Left": 0.2, "Top": 0.03}
+      }
+    },
+    {
+      "BlockType": "LINE",
+      "Text": "Form ID: GOV-PAY-2024-1187",
+      "Confidence": 98.4,
+      "Id": "line-002",
+      "Geometry": {
+        "BoundingBox": {"Width": 0.4, "Height": 0.03, "Left": 0.05, "Top": 0.08}
+      }
+    },
+    {
+      "BlockType": "LINE",
+      "Text": "Payee: National Tech Solutions",
+      "Confidence": 97.9,
+      "Id": "line-003",
+      "Geometry": {
+        "BoundingBox": {"Width": 0.4, "Height": 0.03, "Left": 0.05, "Top": 0.15}
+      }
+    },
+    {
+      "BlockType": "LINE",
+      "Text": "Authorized Amount: $7,500.00",
+      "Confidence": 98.6,
+      "Id": "line-004",
+      "Geometry": {
+        "BoundingBox": {"Width": 0.4, "Height": 0.03, "Left": 0.05, "Top": 0.22}
+      }
+    },
+    {
+      "BlockType": "LINE",
+      "Text": "Payment Type: Grant Disbursement",
+      "Confidence": 97.3,
+      "Id": "line-005",
+      "Geometry": {
+        "BoundingBox": {"Width": 0.4, "Height": 0.03, "Left": 0.05, "Top": 0.29}
+      }
+    },
+    {
+      "BlockType": "LINE",
+      "Text": "Account: NTS123456789",
+      "Confidence": 96.5,
+      "Id": "line-006",
+      "Geometry": {
+        "BoundingBox": {"Width": 0.35, "Height": 0.03, "Left": 0.05, "Top": 0.36}
+      }
+    },
+    {
+      "BlockType": "KEY_VALUE_SET",
+      "EntityTypes": ["KEY"],
+      "Confidence": 97.8,
+      "Id": "kv-key-001",
+      "Relationships": [
+        {"Type": "VALUE", "Ids": ["kv-val-001"]},
+        {"Type": "CHILD", "Ids": ["word-001"]}
+      ]
+    },
+    {
+      "BlockType": "KEY_VALUE_SET",
+      "EntityTypes": ["VALUE"],
+      "Confidence": 97.2,
+      "Id": "kv-val-001",
+      "Relationships": [
+        {"Type": "CHILD", "Ids": ["word-002"]}
+      ]
+    },
+    {
+      "BlockType": "WORD",
+      "Text": "Payee:",
+      "Confidence": 98.8,
+      "Id": "word-001"
+    },
+    {
+      "BlockType": "WORD",
+      "Text": "National Tech Solutions",
+      "Confidence": 97.9,
+      "Id": "word-002"
+    },
+    {
+      "BlockType": "KEY_VALUE_SET",
+      "EntityTypes": ["KEY"],
+      "Confidence": 98.1,
+      "Id": "kv-key-002",
+      "Relationships": [
+        {"Type": "VALUE", "Ids": ["kv-val-002"]},
+        {"Type": "CHILD", "Ids": ["word-003"]}
+      ]
+    },
+    {
+      "BlockType": "KEY_VALUE_SET",
+      "EntityTypes": ["VALUE"],
+      "Confidence": 97.6,
+      "Id": "kv-val-002",
+      "Relationships": [
+        {"Type": "CHILD", "Ids": ["word-004"]}
+      ]
+    },
+    {
+      "BlockType": "WORD",
+      "Text": "Amount:",
+      "Confidence": 98.9,
+      "Id": "word-003"
+    },
+    {
+      "BlockType": "WORD",
+      "Text": "$7,500.00",
+      "Confidence": 98.6,
+      "Id": "word-004"
+    }
+  ],
+  "AnalyzeDocumentModelVersion": "1.0",
+  "_mock_metadata": {
+    "description": "Mock Textract AnalyzeDocument response for a government payment authorization form",
+    "expected_extraction": {
+      "payee_name": "National Tech Solutions",
+      "amount": 7500.00,
+      "currency": "USD",
+      "payment_type": "grant_disbursement",
+      "invoice_number": "GOV-PAY-2024-1187",
+      "due_date": null,
+      "payee_account": "NTS123456789"
+    }
+  }
+}

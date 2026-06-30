@@ -1,0 +1,13 @@
+node_modules/
+cdk.out/
+teammate-frontend/
+__pycache__/
+*.pyc
+.env
+seed_data.json
+*.egg-info/
+dist/
+.pytest_cache/
+.hypothesis/
+.kiro/
+.vscode/
