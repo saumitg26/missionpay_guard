@@ -40,9 +40,9 @@ def handler(event, context):
     """
     logger.info("Create case handler invoked")
 
-    # Generate sequential case ID: MPG-2025-000001
+    # Generate sequential case ID: MPG-2026-001
     seq = _get_next_case_number()
-    case_id = f"MPG-2025-{seq:06d}"
+    case_id = f"MPG-2026-{seq:03d}"
     timestamp = get_current_timestamp()
 
     bucket_name = os.environ.get("RAW_DOCUMENTS_BUCKET", "")

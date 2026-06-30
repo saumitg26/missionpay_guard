@@ -627,6 +627,30 @@ class PaymentProcessingStack(Stack):
             },
         )
 
+        # --- AI Chatbot Lambda ---
+        chatbot_role = iam.Role(
+            self,
+            "ChatbotLambdaRole",
+            assumed_by=iam.ServicePrincipal("lambda.amazonaws.com"),
+            description="Role for AI Chatbot Lambda",
+        )
+        chatbot_role.add_to_policy(logs_policy)
+
+        self.chatbot_fn = _lambda.Function(
+            self,
+            "ChatbotFunction",
+            function_name="missionpay-chatbot",
+            runtime=lambda_runtime,
+            handler="chatbot.handler.handler",
+            code=lambda_code,
+            role=chatbot_role,
+            timeout=Duration.seconds(60),
+            environment={
+                **common_env,
+                "ANTHROPIC_API_KEY": os.environ.get("ANTHROPIC_API_KEY", ""),
+            },
+        )
+
         # --- List Cases API Lambda ---
         self.list_cases_fn = _lambda.Function(
             self,
@@ -947,4 +971,12 @@ class PaymentProcessingStack(Stack):
         decision_resource.add_method(
             "POST",
             apigateway.LambdaIntegration(self.submit_decision_fn),
+        )
+
+        # /api/chat — AI chatbot
+        api_resource = self.api.root.add_resource("api")
+        chat_resource = api_resource.add_resource("chat")
+        chat_resource.add_method(
+            "POST",
+            apigateway.LambdaIntegration(self.chatbot_fn),
         )

@@ -17,6 +17,40 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 
+def _clean_vendor_name(name: str) -> str:
+    """Clean vendor name by removing address, UEI, and other trailing data.
+
+    Examples:
+        "Acme Medical Supply LLC 2450 Liberty..." -> "Acme Medical Supply LLC"
+        "Acme Corp" -> "Acme Corp"
+    """
+    if not name:
+        return name
+
+    # Common company suffixes that mark the end of the name
+    suffixes = ["LLC", "Inc.", "Inc", "Corp.", "Corp", "Ltd.", "Ltd", "Co.", "Group", "Associates", "Partners", "Solutions"]
+
+    for suffix in suffixes:
+        idx = name.find(suffix)
+        if idx > 0:
+            # Cut at the end of the suffix
+            end = idx + len(suffix)
+            # Remove trailing period or comma
+            while end < len(name) and name[end] in " .,":
+                end += 1
+            # If there's more after the suffix (likely address), truncate
+            if end < len(name) - 2:
+                return name[:idx + len(suffix)].strip().rstrip(",.")
+
+    # If no known suffix found, try to cut at first number (likely start of address)
+    import re
+    match = re.search(r'\s+\d{2,5}\s+', name)
+    if match and match.start() > 10:
+        return name[:match.start()].strip()
+
+    return name
+
+
 class ValidationError(Exception):
     """Raised when payment data fails validation."""
     pass
@@ -148,15 +182,23 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         # Only overwrite vendor_name if we extracted something meaningful
         new_vendor = payee_name
         existing_vendor = existing_case.get("vendor_name", "")
-        if not new_vendor or len(new_vendor) < 3:
+        # If existing is a placeholder, always use the extracted one
+        placeholders = ["pending extraction", "test vendor", "unknown", ""]
+        if existing_vendor.lower().strip() in placeholders:
+            new_vendor = payee_name or existing_vendor
+        elif not new_vendor or len(new_vendor) < 3:
             new_vendor = existing_vendor
-        # Prefer shorter vendor name (less likely to include full address)
-        if existing_vendor and len(existing_vendor) < len(new_vendor) and len(existing_vendor) > 5:
-            new_vendor = existing_vendor
+        else:
+            # Both are real values — prefer the one WITHOUT full address (shorter clean name)
+            # But only if the shorter one is a real company name (not a placeholder)
+            if existing_vendor and len(existing_vendor) > 5 and len(existing_vendor) < len(new_vendor):
+                # Check if existing is a clean company name (has LLC, Inc, Corp, etc)
+                if any(s in existing_vendor for s in ["LLC", "Inc", "Corp", "Ltd", "Co.", "Group"]):
+                    new_vendor = existing_vendor
 
         update_fields = {
             "status": case_data.get("status", "extracting"),
-            "vendor_name": new_vendor,
+            "vendor_name": _clean_vendor_name(new_vendor),
             "invoice_amount": new_amount,
             "extraction_confidence": confidence_score,
             "document_type": case_data.get("document_type", "unknown"),
@@ -188,7 +230,7 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         # Ensure the displayed amount matches invoice_amount
         merged_fields["amount"] = new_amount
         # Ensure payee_name in fields matches vendor_name
-        merged_fields["payee_name"] = new_vendor
+        merged_fields["payee_name"] = _clean_vendor_name(new_vendor)
         update_fields["extracted_fields"] = merged_fields
 
         _update_existing(payment_id, _strip_none_values(update_fields))

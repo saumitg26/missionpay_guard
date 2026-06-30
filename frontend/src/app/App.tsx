@@ -8,6 +8,7 @@ import { PacketConversion } from "./components/PacketConversion";
 import { RiskFirewall } from "./components/RiskFirewall";
 import { ApprovalAudit } from "./components/ApprovalAudit";
 import { LoginPage } from "./components/LoginPage";
+import { AIChatSidebar } from "./components/AIChatSidebar";
 
 // Screens mapped to sidebar nav items
 type Screen =
@@ -60,6 +61,7 @@ export default function App() {
   const [userRole, setUserRole] = useState<string>("analyst");
   const [userName, setUserName] = useState<string>("M. Anderson");
   const [activeCaseId, setActiveCaseId] = useState<string | null>(null);
+  const [activeCaseData, setActiveCaseData] = useState<Record<string, unknown> | null>(null);
   const [auditPackets, setAuditPackets] = useState<AuditPacket[]>([]);
 
   if (!authenticated) {
@@ -80,8 +82,18 @@ export default function App() {
     setScreen(sidebarMap[s]);
   };
 
-  const handleOpenCase = (caseId?: string) => {
-    if (caseId) setActiveCaseId(caseId);
+  const handleOpenCase = async (caseId?: string) => {
+    if (caseId) {
+      setActiveCaseId(caseId);
+      // Fetch case data for the AI sidebar
+      try {
+        const res = await fetch(`https://izmtjtem00.execute-api.us-east-1.amazonaws.com/prod/cases/${caseId}/status`);
+        if (res.ok) {
+          const data = await res.json();
+          setActiveCaseData(data);
+        }
+      } catch { /* silently fail */ }
+    }
     setScreen("extraction");
   };
 
@@ -119,6 +131,7 @@ export default function App() {
 
         {renderContent()}
       </div>
+      <AIChatSidebar caseId={activeCaseId} caseData={activeCaseData} />
     </div>
   );
 }

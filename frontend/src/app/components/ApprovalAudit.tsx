@@ -7,6 +7,7 @@ export function ApprovalAudit({ caseId, onGeneratePacket }: { caseId?: string; o
   const [loading, setLoading] = useState(true);
   const [decision, setDecision] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
+  const [packetGenerated, setPacketGenerated] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [comment, setComment] = useState("");
 
@@ -68,6 +69,7 @@ export function ApprovalAudit({ caseId, onGeneratePacket }: { caseId?: string; o
     if (onGeneratePacket) {
       onGeneratePacket(packet);
     }
+    setPacketGenerated(true);
   };
 
   const getRiskLabel = (score: number): string => {
@@ -250,11 +252,24 @@ export function ApprovalAudit({ caseId, onGeneratePacket }: { caseId?: string; o
             </div>
 
             <button
-              onClick={() => generateAuditPacket()}
-              className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-[#0f1f3d] hover:bg-[#1e3258] text-white text-sm font-medium rounded-lg transition-colors"
+              onClick={() => !packetGenerated && generateAuditPacket()}
+              className={`w-full flex items-center justify-center gap-2 px-4 py-3 text-sm font-medium rounded-lg transition-colors ${
+                packetGenerated
+                  ? "bg-green-600 text-white cursor-default"
+                  : "bg-[#0f1f3d] hover:bg-[#1e3258] text-white"
+              }`}
             >
-              <FileDown className="w-4 h-4" />
-              Generate Audit Packet
+              {packetGenerated ? (
+                <>
+                  <CheckCircle className="w-4 h-4" />
+                  Audit Packet Generated
+                </>
+              ) : (
+                <>
+                  <FileDown className="w-4 h-4" />
+                  Generate Audit Packet
+                </>
+              )}
             </button>
           </div>
 
