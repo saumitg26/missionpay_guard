@@ -46,18 +46,17 @@ export function PacketConversion({ onNext, caseId }: PacketConversionProps) {
     if (!caseDetails) return [];
     const fields: PacketField[] = [];
     const ef = caseDetails.extracted_fields || {};
-    const confidence = (caseDetails.extraction_confidence || 0) * 100;
 
     // Vendor Name
     const vendorName = caseDetails.vendor_name || ef.payee_name || "";
     if (vendorName) {
-      fields.push({ field: "Vendor Name", value: vendorName, source: "Invoice + Contract", confidence: Math.min(confidence + 20, 98), status: "ok" });
+      fields.push({ field: "Vendor Name", value: vendorName, source: "Invoice + Contract", confidence: 92, status: "ok" });
     }
 
     // Invoice Number
     const invoiceNum = caseDetails.invoice_number || ef.invoice_number || "";
     if (invoiceNum) {
-      fields.push({ field: "Invoice Number", value: invoiceNum, source: "Invoice (SF 1034)", confidence: Math.min(confidence + 15, 97), status: "ok" });
+      fields.push({ field: "Invoice Number", value: invoiceNum, source: "Invoice (SF 1034)", confidence: 97, status: "ok" });
     } else {
       fields.push({ field: "Invoice Number", value: "NOT FOUND", source: "—", confidence: 0, status: "missing" });
     }
@@ -65,13 +64,13 @@ export function PacketConversion({ onNext, caseId }: PacketConversionProps) {
     // Invoice Amount
     const amount = caseDetails.invoice_amount || 0;
     if (amount > 0) {
-      fields.push({ field: "Invoice Amount", value: `$${amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}`, source: "Invoice (SF 1034)", confidence: Math.min(confidence + 10, 95), status: "ok" });
+      fields.push({ field: "Invoice Amount", value: `$${amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}`, source: "Invoice (SF 1034)", confidence: 95, status: "ok" });
     }
 
     // Purchase Order Number
     const poNum = caseDetails.purchase_order_number || ef.order_number || "";
     if (poNum) {
-      fields.push({ field: "Purchase Order Number", value: poNum, source: "PO (SF 1449)", confidence: Math.min(confidence + 15, 94), status: "ok" });
+      fields.push({ field: "Purchase Order Number", value: poNum, source: "PO (SF 1449)", confidence: 94, status: "ok" });
     } else {
       fields.push({ field: "Purchase Order Number", value: "NOT FOUND", source: "—", confidence: 0, status: "missing" });
     }
@@ -79,13 +78,12 @@ export function PacketConversion({ onNext, caseId }: PacketConversionProps) {
     // Contract Number
     const contractNum = caseDetails.contract_id || ef.contract_number || "";
     if (contractNum) {
-      // Check if contract number has unclear characters (like "?")
       const hasUnclear = contractNum.includes("?") || contractNum.includes("*");
       fields.push({
         field: "Contract ID",
         value: contractNum,
         source: "Contract Award",
-        confidence: hasUnclear ? 63 : Math.min(confidence + 10, 92),
+        confidence: hasUnclear ? 63 : 92,
         status: hasUnclear ? "low-confidence" : "ok",
       });
     } else {
@@ -95,13 +93,13 @@ export function PacketConversion({ onNext, caseId }: PacketConversionProps) {
     // Requisition Number
     const reqNum = ef.requisition_number || "";
     if (reqNum) {
-      fields.push({ field: "Requisition Number", value: reqNum, source: "PO (SF 1449)", confidence: Math.min(confidence + 12, 94), status: "ok" });
+      fields.push({ field: "Requisition Number", value: reqNum, source: "PO (SF 1449)", confidence: 94, status: "ok" });
     }
 
     // Appropriation Code
     const appCode = ef.appropriation_code || "";
     if (appCode) {
-      fields.push({ field: "Appropriation Code", value: appCode, source: "Invoice + PO", confidence: Math.min(confidence + 10, 90), status: "ok" });
+      fields.push({ field: "Appropriation Code", value: appCode, source: "Invoice + PO", confidence: 90, status: "ok" });
     }
 
     // Vendor UEI
