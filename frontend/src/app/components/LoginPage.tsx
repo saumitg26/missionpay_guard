@@ -45,7 +45,7 @@ const footerLinks = [
 ];
 
 interface LoginPageProps {
-  onLogin: () => void;
+  onLogin: (role?: string, name?: string) => void;
 }
 
 export function LoginPage({ onLogin }: LoginPageProps) {
@@ -67,7 +67,9 @@ export function LoginPage({ onLogin }: LoginPageProps) {
     setLoading(true);
     setTimeout(() => {
       setLoading(false);
-      onLogin();
+      const selectedRoleLabel = roles.find(r => r.value === role)?.label || "Analyst";
+      const displayName = email.split("@")[0]?.split(".").map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" ") || "User";
+      onLogin(selectedRoleLabel, displayName);
     }, 1200);
   };
 

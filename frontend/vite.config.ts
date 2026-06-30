@@ -31,17 +31,6 @@ export default defineConfig({
     },
   },
 
-  server: {
-    port: 3000,
-    proxy: {
-      '/api': {
-        target: 'https://izmtjtem00.execute-api.us-east-1.amazonaws.com/prod',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api/, ''),
-      },
-    },
-  },
-
   // File types to support raw imports. Never add .css, .tsx, or .ts files to this.
   assetsInclude: ['**/*.svg', '**/*.csv'],
 })

@@ -32,9 +32,11 @@ const navItems: { id: Screen; label: string; icon: React.ElementType; badge?: st
 interface SidebarProps {
   active: Screen;
   onNavigate: (s: Screen) => void;
+  userName?: string;
+  userRole?: string;
 }
 
-export function Sidebar({ active, onNavigate }: SidebarProps) {
+export function Sidebar({ active, onNavigate, userName = "M. Anderson", userRole = "Senior Payment Analyst" }: SidebarProps) {
   return (
     <aside className="w-60 shrink-0 bg-[#0f1f3d] flex flex-col h-full">
       {/* Logo */}
@@ -87,11 +89,11 @@ export function Sidebar({ active, onNavigate }: SidebarProps) {
       <div className="px-4 py-3 border-t border-[#1e3258]">
         <div className="flex items-center gap-2">
           <div className="w-7 h-7 rounded-full bg-[#1e3258] flex items-center justify-center text-[#93aed4] text-xs font-semibold">
-            MA
+            {userName.split(" ").map(w => w[0]).join("").slice(0, 2)}
           </div>
           <div>
-            <div className="text-white text-xs font-medium">M. Anderson</div>
-            <div className="text-[#7b92b8] text-[10px]">Senior Payment Analyst</div>
+            <div className="text-white text-xs font-medium">{userName}</div>
+            <div className="text-[#7b92b8] text-[10px]">{userRole}</div>
           </div>
         </div>
       </div>

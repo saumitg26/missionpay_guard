@@ -1,161 +1,291 @@
-// API service for connecting to MissionPay Guard backend
-// Toggle between mock and live API with USE_MOCK_API flag
+// =============================================================================
+// MissionPay Guard — Live API Service Layer
+// Connects the frontend to the deployed AWS backend.
+// API Gateway: https://izmtjtem00.execute-api.us-east-1.amazonaws.com/prod
+// =============================================================================
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://izmtjtem00.execute-api.us-east-1.amazonaws.com/prod';
-const USE_MOCK_API = import.meta.env.VITE_USE_MOCK === 'true'; // Default to live API
+const API_BASE = "https://izmtjtem00.execute-api.us-east-1.amazonaws.com/prod";
+
+// -----------------------------------------------------------------------------
+// Types matching the backend DynamoDB schema
+// -----------------------------------------------------------------------------
 
 export interface PaymentCase {
+  id: string;
+  vendor: string;
+  amount: string;
+  status: string;
+  risk: string;
+  updated: string;
+  reviewer: string;
+  // Extended fields from DynamoDB
+  extractedFields?: Record<string, string>;
+  riskScore?: number;
+  validationResults?: Record<string, unknown>;
+  documents?: string[];
+}
+
+export interface DashboardSummary {
+  totalCases: { value: string; delta: string };
+  pendingReview: { value: string; delta: string };
+  highRiskCases: { value: string; delta: string };
+  autoRouted: { value: string; delta: string };
+  avgProcessingHrs: { value: string; delta: string };
+}
+
+export interface CreateCasePayload {
+  vendor_name: string;
+  amount: number;
+  description?: string;
+}
+
+export interface UploadUrlResponse {
+  upload_url: string;
+  document_key: string;
+  case_id: string;
+}
+
+export interface CaseStatusResponse {
   case_id: string;
   status: string;
+  risk_score?: number;
+  extracted_fields?: Record<string, string>;
+  validation_results?: Record<string, unknown>;
+  ai_recommendation?: string;
+  audit_trail?: Array<{
+    timestamp: string;
+    event: string;
+    actor: string;
+    type: string;
+    detail: string;
+  }>;
+}
+
+// -----------------------------------------------------------------------------
+// API Functions
+// -----------------------------------------------------------------------------
+
+/** Fetch all payment cases from DynamoDB via API Gateway */
+export async function fetchCases(): Promise<PaymentCase[]> {
+  try {
+    const res = await fetch(`${API_BASE}/cases`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    // Backend returns { cases: [...] } or just an array
+    const cases = Array.isArray(data) ? data : data.cases || [];
+    return cases.map(mapBackendCase);
+  } catch (err) {
+    console.error("Failed to fetch cases:", err);
+    return [];
+  }
+}
+
+/** Create a new payment case */
+export async function createCase(payload: CreateCasePayload): Promise<{ caseId: string } | null> {
+  try {
+    const res = await fetch(`${API_BASE}/cases`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.json();
+  } catch (err) {
+    console.error("Failed to create case:", err);
+    return null;
+  }
+}
+
+/** Get presigned upload URL for a document */
+export async function getUploadUrl(caseId: string, filename: string, docType: string): Promise<UploadUrlResponse | null> {
+  try {
+    const res = await fetch(`${API_BASE}/cases/${caseId}/documents`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ filename, doc_type: docType }),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.json();
+  } catch (err) {
+    console.error("Failed to get upload URL:", err);
+    return null;
+  }
+}
+
+/** Upload a file to S3 using the presigned URL */
+export async function uploadFileToS3(presignedUrl: string, file: File): Promise<boolean> {
+  try {
+    const res = await fetch(presignedUrl, {
+      method: "PUT",
+      body: file,
+      headers: { "Content-Type": file.type || "application/pdf" },
+    });
+    return res.ok;
+  } catch (err) {
+    console.error("Failed to upload to S3:", err);
+    return false;
+  }
+}
+
+/** Get detailed case status including extraction results */
+export async function getCaseStatus(caseId: string): Promise<CaseStatusResponse | null> {
+  try {
+    const res = await fetch(`${API_BASE}/cases/${caseId}/status`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.json();
+  } catch (err) {
+    console.error("Failed to get case status:", err);
+    return null;
+  }
+}
+
+/** Submit a human decision on a case */
+export async function submitDecision(caseId: string, decision: string, comment: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${API_BASE}/cases/${caseId}/decision`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ decision, comment, reviewer: "Current User" }),
+    });
+    return res.ok;
+  } catch (err) {
+    console.error("Failed to submit decision:", err);
+    return false;
+  }
+}
+
+/** Get full case details including extracted fields from DynamoDB */
+export async function getCaseDetails(caseId: string): Promise<CaseDetails | null> {
+  try {
+    const res = await fetch(`${API_BASE}/cases/${caseId}/status`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    return data as CaseDetails;
+  } catch (err) {
+    console.error("Failed to get case details:", err);
+    return null;
+  }
+}
+
+/** Get presigned URL for viewing a document in a case */
+export async function getDocumentViewUrl(caseId: string, docIndex: number = 0): Promise<DocumentViewResponse | null> {
+  try {
+    const res = await fetch(`${API_BASE}/cases/${caseId}/documents?doc_index=${docIndex}&role=reviewer`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.json();
+  } catch (err) {
+    console.error("Failed to get document URL:", err);
+    return null;
+  }
+}
+
+/** Get all document URLs for a case */
+export async function getAllDocumentUrls(caseId: string): Promise<DocumentViewResponse[]> {
+  const urls: DocumentViewResponse[] = [];
+  // Try to get documents by index (up to 5)
+  for (let i = 0; i < 5; i++) {
+    const result = await getDocumentViewUrl(caseId, i);
+    if (!result) break;
+    urls.push(result);
+  }
+  return urls;
+}
+
+// Extended types for case details
+export interface CaseDetails {
+  case_id: string;
+  status: string;
+  last_updated: string;
   vendor_name: string;
   invoice_amount: number;
   risk_level: string;
   risk_score: number;
+  approval_route: string;
   document_type: string;
-  submitted_at: string;
-  updated_at: string;
-  submitted_by?: string;
-  approval_route?: string;
+  submitted_by: string;
+  // Extended fields from the full DynamoDB record
+  extracted_fields?: Record<string, string>;
+  extraction_confidence?: number;
+  invoice_number?: string;
+  purchase_order_number?: string;
+  contract_id?: string;
+  documents?: string[];
+  risk_factors?: string[];
+  firewall_checks?: Record<string, unknown>;
 }
 
-export interface ListCasesResponse {
-  cases: PaymentCase[];
-  count: number;
-}
-
-export interface CreateCaseResponse {
+export interface DocumentViewResponse {
   case_id: string;
-  status: string;
-  message: string;
-  presigned_upload_url?: string;
-  s3_key: string;
+  document_key: string;
+  presigned_url: string;
+  expires_in_seconds: number;
 }
 
-export interface DecisionResponse {
-  case_id: string;
-  decision: string;
-  new_status: string;
-  message: string;
+/** Compute dashboard summary from live cases */
+export function computeSummary(cases: PaymentCase[]): DashboardSummary {
+  const total = cases.length;
+  const pending = cases.filter(c => 
+    c.status === "Review Required" || c.status === "Validating" || c.status === "Extracting"
+  ).length;
+  const highRisk = cases.filter(c => c.risk === "High" || c.risk === "Critical").length;
+  const approved = cases.filter(c => 
+    c.status === "Approved" || c.status === "Payment Ready" || c.status === "Audit Generated"
+  ).length;
+
+  return {
+    totalCases: { value: total.toLocaleString(), delta: "Live from DynamoDB" },
+    pendingReview: { value: pending.toString(), delta: `${pending} require action` },
+    highRiskCases: { value: highRisk.toString(), delta: "Flagged by Risk Engine" },
+    autoRouted: { value: approved.toString(), delta: `${total > 0 ? Math.round((approved / total) * 100) : 0}% of total` },
+    avgProcessingHrs: { value: "—", delta: "Computed at runtime" },
+  };
 }
 
-// Real API calls
-async function fetchApi<T = any>(path: string, options?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...options?.headers,
-    },
-  });
-  if (!response.ok) {
-    const errorBody = await response.text().catch(() => '');
-    throw new Error(`API Error: ${response.status} ${errorBody}`);
-  }
-  return response.json();
+// -----------------------------------------------------------------------------
+// Helpers
+// -----------------------------------------------------------------------------
+
+function mapBackendCase(raw: Record<string, unknown>): PaymentCase {
+  // The backend stores fields with various naming conventions
+  const id = (raw.case_id || raw.caseId || raw.id || "") as string;
+  const vendor = (raw.vendor_name || raw.vendor || "Unknown Vendor") as string;
+  const rawAmount = raw.amount || raw.invoice_amount || 0;
+  const amount = typeof rawAmount === "number" 
+    ? `$${rawAmount.toLocaleString("en-US", { minimumFractionDigits: 2 })}` 
+    : String(rawAmount);
+  const status = mapStatus(raw.status as string || raw.workflow_status as string || "Received");
+  const risk = mapRisk(raw.risk_level as string || raw.risk as string || "Low");
+  const updated = (raw.updated_at || raw.updated || raw.created_at || new Date().toISOString()) as string;
+  const reviewer = (raw.reviewer || raw.assigned_to || "Unassigned") as string;
+
+  return { id, vendor, amount, status, risk, updated, reviewer };
 }
 
-export const api = {
-  // List all cases
-  listCases: async (): Promise<ListCasesResponse> => {
-    if (USE_MOCK_API) return mockListCases();
-    return fetchApi<ListCasesResponse>('/cases');
-  },
-
-  // Get case status
-  getCaseStatus: async (caseId: string) => {
-    if (USE_MOCK_API) return mockCaseStatus(caseId);
-    return fetchApi(`/cases/${caseId}/status`);
-  },
-
-  // Create a new case (upload document to S3 via presigned URL)
-  createCase: async (file: File, metadata?: { vendor_name?: string; submitted_by?: string }): Promise<CreateCaseResponse> => {
-    if (USE_MOCK_API) return mockCreateCase();
-
-    // Step 1: Create case and get presigned upload URL
-    const caseResponse = await fetchApi<CreateCaseResponse>('/cases', {
-      method: 'POST',
-      body: JSON.stringify({
-        filename: file.name,
-        vendor_name: metadata?.vendor_name || 'Pending Extraction',
-        submitted_by: metadata?.submitted_by || 'portal-user',
-      }),
-    });
-
-    // Step 2: Upload file directly to S3 using presigned URL
-    if (caseResponse.presigned_upload_url) {
-      await fetch(caseResponse.presigned_upload_url, {
-        method: 'PUT',
-        body: file,
-        headers: {
-          'Content-Type': 'application/pdf',
-        },
-      });
-    }
-
-    return caseResponse;
-  },
-
-  // Submit approval decision
-  submitDecision: async (caseId: string, decision: string, reasoning: string, reviewerId?: string): Promise<DecisionResponse> => {
-    if (USE_MOCK_API) return mockApproval(caseId, decision, reasoning);
-    return fetchApi<DecisionResponse>(`/cases/${caseId}/decision`, {
-      method: 'POST',
-      body: JSON.stringify({
-        decision,
-        reasoning,
-        reviewer_id: reviewerId || 'current-user',
-      }),
-    });
-  },
-
-  // Get secure document access (presigned URL)
-  getDocumentAccess: async (caseId: string) => {
-    if (USE_MOCK_API) return { presigned_url: '#mock-preview', expires_in_seconds: 300 };
-    return fetchApi(`/cases/${caseId}/documents?role=reviewer&user_id=current-user`);
-  },
-};
-
-// Mock implementations for demo/fallback
-function mockListCases(): Promise<ListCasesResponse> {
-  return Promise.resolve({
-    cases: [
-      { case_id: "MPG-2024-008471", status: "pending_approval", vendor_name: "Northgate Defense Systems LLC", invoice_amount: 847250.00, risk_level: "high", risk_score: 78, document_type: "invoice", submitted_at: "2024-12-18T14:32:00Z", updated_at: "2024-12-18T14:32:00Z" },
-      { case_id: "MPG-2024-008468", status: "validating", vendor_name: "Apex Government Solutions Inc.", invoice_amount: 124800.00, risk_level: "medium", risk_score: 45, document_type: "invoice", submitted_at: "2024-12-18T13:15:00Z", updated_at: "2024-12-18T13:15:00Z" },
-      { case_id: "MPG-2024-008465", status: "approved", vendor_name: "Federal Logistics Partners LLC", invoice_amount: 56200.00, risk_level: "low", risk_score: 12, document_type: "invoice", submitted_at: "2024-12-18T11:42:00Z", updated_at: "2024-12-18T11:42:00Z" },
-      { case_id: "MPG-2024-008462", status: "pending_approval", vendor_name: "Sentinel IT Services Inc.", invoice_amount: 1204000.00, risk_level: "high", risk_score: 85, document_type: "invoice", submitted_at: "2024-12-18T10:08:00Z", updated_at: "2024-12-18T10:08:00Z" },
-      { case_id: "MPG-2024-008459", status: "disbursement_simulated", vendor_name: "CapStone Infrastructure Group", invoice_amount: 339750.00, risk_level: "low", risk_score: 8, document_type: "invoice", submitted_at: "2024-12-18T09:55:00Z", updated_at: "2024-12-18T09:55:00Z" },
-    ],
-    count: 5,
-  });
+function mapStatus(s: string): string {
+  const statusMap: Record<string, string> = {
+    "pending": "Received",
+    "received": "Received",
+    "extracting": "Extracting",
+    "processing": "Extracting",
+    "validating": "Validating",
+    "review_required": "Review Required",
+    "review required": "Review Required",
+    "approved": "Approved",
+    "payment_ready": "Payment Ready",
+    "payment ready": "Payment Ready",
+    "completed": "Audit Generated",
+    "audit_generated": "Audit Generated",
+    "rejected": "Rejected",
+  };
+  return statusMap[s.toLowerCase()] || s;
 }
 
-function mockCaseStatus(caseId: string) {
-  return Promise.resolve({
-    case_id: caseId,
-    status: 'pending_approval',
-    vendor_name: 'Northgate Defense Systems LLC',
-    invoice_amount: 847250.00,
-    risk_level: 'high',
-    risk_score: 78,
-  });
-}
-
-function mockCreateCase(): Promise<CreateCaseResponse> {
-  return new Promise(resolve => {
-    setTimeout(() => resolve({
-      case_id: `MPG-2024-${String(Math.floor(Math.random() * 10000)).padStart(6, '0')}`,
-      status: 'intake',
-      message: 'Payment case created. Document stored in encrypted quarantine vault.',
-      s3_key: 'quarantine/MPG-2024-DEMO/pending',
-    }), 1500);
-  });
-}
-
-function mockApproval(caseId: string, decision: string, reasoning: string): Promise<DecisionResponse> {
-  return Promise.resolve({
-    case_id: caseId,
-    decision,
-    new_status: decision === 'approve' ? 'approved' : decision === 'reject' ? 'rejected' : 'pending_approval',
-    message: `Decision '${decision}' recorded for case ${caseId}`,
-  });
+function mapRisk(r: string): string {
+  const riskMap: Record<string, string> = {
+    "low": "Low",
+    "medium": "Medium",
+    "high": "High",
+    "critical": "Critical",
+  };
+  return riskMap[r.toLowerCase()] || r;
 }

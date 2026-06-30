@@ -52,18 +52,27 @@ def handler(event, context):
             404, {"error": f"Case {case_id} not found"}
         )
 
-    # Return case status information
+    # Return full case information including extracted fields
     return _api_response(200, {
         "case_id": case_id,
         "status": case.get("status", "UNKNOWN"),
         "last_updated": case.get("updated_at", case.get("submitted_at", "")),
         "vendor_name": case.get("vendor_name", ""),
         "invoice_amount": case.get("invoice_amount", 0),
+        "invoice_number": case.get("invoice_number", ""),
+        "purchase_order_number": case.get("purchase_order_number", ""),
+        "contract_id": case.get("contract_id", ""),
         "risk_level": case.get("risk_level", ""),
         "risk_score": case.get("risk_score", 0.0),
+        "risk_factors": case.get("risk_factors", []),
+        "firewall_checks": case.get("firewall_checks", {}),
         "approval_route": case.get("approval_route", ""),
         "document_type": case.get("document_type", ""),
         "submitted_by": case.get("submitted_by", ""),
+        "extracted_fields": case.get("extracted_fields", {}),
+        "extraction_confidence": case.get("extraction_confidence", 0.0),
+        "documents": case.get("documents", []),
+        "payment_details": case.get("payment_details", {}),
     })
 
 
